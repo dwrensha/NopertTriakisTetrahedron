@@ -65,7 +65,7 @@ lake build constructTriakis
 .lake/build/bin/constructTriakis packs
 ```
 
-On a 16-core machine this takes about 35 minutes (about 8 CPU-hours).
+On a 16-core machine this takes about 30 minutes (about 6 CPU-hours).
 
 ### Kernel-only proof
 
@@ -89,7 +89,7 @@ To generate and check it:
 
 ```
 scripts/fetch_packs.sh      # the certificate packs, into packs/
-scripts/gen_kernel.sh       # the generated modules, into TriakisKernel/ (about 1–1.5 hours)
+scripts/gen_kernel.sh       # the generated modules, into TriakisKernel/ (about 45 minutes)
 lake build TriakisKernel    # checks them (about 2.5 hours)
 ```
 

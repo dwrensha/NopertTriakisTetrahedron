@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generate the kernel-only proof `TriakisKernel/` from the certificate packs (fetch them with
-# scripts/fetch_packs.sh). Takes about 1–1.5 hours on 16 cores, almost all of it the chart;
+# scripts/fetch_packs.sh). Takes about 45 minutes on 16 cores, almost all of it the chart;
 # then `lake build TriakisKernel` checks the proof (about 2.5 hours).
 #
 # The generated modules refer to their data by repo-relative paths, so `lake build` must be
