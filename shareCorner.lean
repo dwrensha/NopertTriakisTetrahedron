@@ -1,5 +1,5 @@
-import Noperts.Stellated.NativeExecutable
-import Noperts.Stellated.PackedCornerTree
+import Noperts.Triakis.NativeExecutable
+import Noperts.Triakis.PackedCornerTree
 
 /-!
 Rewrite `corner.pack` (format v1) into format v2 with shared fact rows: in
@@ -14,8 +14,8 @@ before it is written.
 `shareCorner IN.pack OUT.pack`
 -/
 
-open Noperts.Stellated
-open Noperts.Stellated.CornerTree CornerCertificate CornerPoly PackedCornerTree
+open Noperts.Triakis
+open Noperts.Triakis.CornerTree CornerCertificate CornerPoly PackedCornerTree
 
 def zig (z : Int) : Nat := if 0 ≤ z then 2 * z.toNat else 2 * (-z).toNat - 1
 

@@ -1,7 +1,7 @@
-import Noperts.Stellated.PackedSolutionTree
-import Noperts.Stellated.ChartKernelEdge
-import Noperts.Stellated.ChartKernelGlobal
-import Noperts.Stellated.ChartKernelMixed
+import Noperts.Triakis.PackedSolutionTree
+import Noperts.Triakis.ChartKernelEdge
+import Noperts.Triakis.ChartKernelGlobal
+import Noperts.Triakis.ChartKernelMixed
 
 /-!
 Profiling aid (not part of the proof): estimates the chart-0 check cost per
@@ -10,8 +10,8 @@ time `tube.Valid` and then fail the (cheap) shared-table match.
 `benchChartRow DIR NSAMPLE`.
 -/
 
-open Noperts.Stellated
-open Noperts.Stellated.AtlasProjectiveSolutionTree
+open Noperts.Triakis
+open Noperts.Triakis.AtlasProjectiveSolutionTree
 
 def kindOf : Row → Nat
   | .cayleySplit .. => 0 | .viewRoot .. => 1 | .viewSplit .. => 2
@@ -280,8 +280,8 @@ def emitEdge (directory : String) (stride count : Nat) (out : String) : IO Unit 
         seen := seen + 1
         if seen % stride == 0 then
           rows := rows.push s!"({edgeBoxS b}, {ChartKernel.defectHints b})"
-  IO.FS.writeFile out s!"import Noperts.Stellated.ChartKernelEdge
-open Noperts.Stellated Noperts.Stellated.AtlasProjectiveEdgeCertificate
+  IO.FS.writeFile out s!"import Noperts.Triakis.ChartKernelEdge
+open Noperts.Triakis Noperts.Triakis.AtlasProjectiveEdgeCertificate
 
 set_option maxHeartbeats 0
 def rows : List (Box × List Int) := [
@@ -339,8 +339,8 @@ def emitGlobal (directory : String) (stride count : Nat) (out : String) : IO Uni
         seen := seen + 1
         if seen % stride == 0 then
           rows := rows.push s!"({globalBoxS b}, {ChartKernelG.globalHints b})"
-  IO.FS.writeFile out s!"import Noperts.Stellated.ChartKernelGlobal
-open Noperts.Stellated Noperts.Stellated.AtlasProjectiveGlobalCertificate
+  IO.FS.writeFile out s!"import Noperts.Triakis.ChartKernelGlobal
+open Noperts.Triakis Noperts.Triakis.AtlasProjectiveGlobalCertificate
 
 set_option maxHeartbeats 0
 def rows : List (Box × List Int) := [
@@ -392,9 +392,9 @@ def emitMixed (directory : String) (stride count : Nat) (out : String) : IO Unit
         seen := seen + 1
         if seen % stride == 0 then
           rows := rows.push s!"({mixedBoxS b}, {ChartKernelM.mixedHints b})"
-  IO.FS.writeFile out s!"import Noperts.Stellated.ChartKernelMixed
-open Noperts.Stellated Noperts.Stellated.AtlasProjectiveMixedGlobalCertificate
-open Noperts.Stellated.AtlasProjectiveLocalCertificate
+  IO.FS.writeFile out s!"import Noperts.Triakis.ChartKernelMixed
+open Noperts.Triakis Noperts.Triakis.AtlasProjectiveMixedGlobalCertificate
+open Noperts.Triakis.AtlasProjectiveLocalCertificate
 
 set_option maxHeartbeats 0
 def rows : List (AtlasProjectiveMixedGlobalCertificate.Box × List Int) := [

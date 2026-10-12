@@ -1,12 +1,12 @@
-import Noperts.Stellated.PackedCornerTree
-import Noperts.Stellated.AtlasProjectiveSolutionTree
+import Noperts.Triakis.PackedCornerTree
+import Noperts.Triakis.AtlasProjectiveSolutionTree
 
 /-!
 Check a `corner.pack` table by table, reporting the first invalid row.
 -/
 
-open Noperts.Stellated
-open Noperts.Stellated.CornerTree CornerCoverage CornerHandoff PackedCornerTree
+open Noperts.Triakis
+open Noperts.Triakis.CornerTree CornerCoverage CornerHandoff PackedCornerTree
 
 def coneNeg (k : Nat) : Fin 4 → Bool := fun b => (k >>> b.val) % 2 = 1
 

@@ -1,6 +1,6 @@
-import Noperts.Stellated.NativeExecutable
-import Noperts.Stellated.PackedCornerTree
-import Noperts.Stellated.CornerAffTree
+import Noperts.Triakis.NativeExecutable
+import Noperts.Triakis.PackedCornerTree
+import Noperts.Triakis.CornerAffTree
 import Std.Data.HashMap
 
 /-!
@@ -12,9 +12,9 @@ splits where the cheap bound fails.
 `cornerAffGen stats PACK TABLE DEPTH`
 -/
 
-open Noperts.Stellated
-open Noperts.Stellated.CornerTree CornerCertificate CornerPoly PackedCornerTree SparsePoly
-open Noperts.Stellated.CornerKernel CornerAff
+open Noperts.Triakis
+open Noperts.Triakis.CornerTree CornerCertificate CornerPoly PackedCornerTree SparsePoly
+open Noperts.Triakis.CornerKernel CornerAff
 
 instance : Inhabited Row := ⟨⟨false, .plain, [], [], ⟨fun _ _ => 0, fun _ => 0, fun _ => 0⟩, [], [], []⟩⟩
 instance : Inhabited FactPoly := ⟨⟨[], [], 1⟩⟩
@@ -209,7 +209,7 @@ def main (args : List String) : IO Unit := do
       let chunks := chunks.push ⟨chunks.size, rootF, top, topCost⟩
       IO.println s!"{chunks.size} chunks"
       let tn := s!"T{ti}"
-      let pre := s!"Noperts.Stellated.KernelCorner.{tn}"
+      let pre := s!"Noperts.Triakis.KernelCorner.{tn}"
       IO.FS.createDirAll s!"{outDir}/{tn}"
       IO.FS.createDirAll dataDir
       -- facts slice: facts, fact polynomials, and the root node
@@ -220,17 +220,17 @@ def main (args : List String) : IO Unit := do
       fout := fout ++ #[1, 2, 0, 1] ++ frameT rootF ++ #[0]
       let factsS := ",".intercalate (fout.toList.map toString) ++ ","
       IO.FS.writeFile s!"{dataDir}/{tn}.facts.slice3" factsS
-      IO.FS.writeFile s!"{outDir}/{tn}/Facts.lean" s!"import Noperts.Stellated.KernelLoadAff
-import Noperts.Stellated.AtlasProjectiveSolutionTree
-import Noperts.Stellated.CornerCoverage
+      IO.FS.writeFile s!"{outDir}/{tn}/Facts.lean" s!"import Noperts.Triakis.KernelLoadAff
+import Noperts.Triakis.AtlasProjectiveSolutionTree
+import Noperts.Triakis.CornerCoverage
 
-open Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel
+open Noperts.Triakis Noperts.Triakis.CornerTree Noperts.Triakis.CornerKernel
 
 set_option Elab.async false
 
 namespace {pre}
 
-stellated_corner_chunk \"{dataDir}/{tn}.facts.slice3\" 0 0 1 src
+triakis_corner_chunk \"{dataDir}/{tn}.facts.slice3\" 0 0 1 src
 -- data hash {hash factsS} (the loaded file is not tracked by Lake)
 noncomputable abbrev facts : Array CornerCertificate.Row := src.facts.toArray
 noncomputable abbrev fps : Array FactPoly := src.fpolys.toArray
@@ -242,18 +242,18 @@ end {pre}
       let nf := st.facts.size
       let fgroups := (nf + 9) / 10
       for fg in List.range fgroups do
-        let mut src := s!"import StellatedKernel.{tn}.Facts\n\nopen Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel\n\nset_option Elab.async false\n\nnamespace {pre}\n\nset_option maxRecDepth 100000\nset_option maxHeartbeats 0\n"
+        let mut src := s!"import TriakisKernel.{tn}.Facts\n\nopen Noperts.Triakis Noperts.Triakis.CornerTree Noperts.Triakis.CornerKernel\n\nset_option Elab.async false\n\nnamespace {pre}\n\nset_option maxRecDepth 100000\nset_option maxHeartbeats 0\n"
         for k in List.range (min 10 (nf - 10 * fg)) do
           let i := 10 * fg + k
           src := src ++ s!"\ntheorem fact{i} : ∀ h : {i} < facts.size, (facts[{i}]'h).KeyFacts := by decide +kernel\n\ntheorem fpoly{i} : ∀ h : {i} < fps.size, FactPolyAt facts fps ⟨{i}, h⟩ := by decide +kernel\n"
         src := src ++ s!"\nend {pre}\n"
         IO.FS.writeFile s!"{outDir}/{tn}/F{fg}.lean" src
-      let fimports := "\n".intercalate ((List.range fgroups).map fun g => s!"import StellatedKernel.{tn}.F{g}")
+      let fimports := "\n".intercalate ((List.range fgroups).map fun g => s!"import TriakisKernel.{tn}.F{g}")
       let cases := fun (nm : String) => "\n".intercalate ((List.range nf).map fun i => s!"    | {i}, h => {nm}{i} h")
-      IO.FS.writeFile s!"{outDir}/{tn}/FactsOk.lean" s!"import StellatedKernel.{tn}.Facts
+      IO.FS.writeFile s!"{outDir}/{tn}/FactsOk.lean" s!"import TriakisKernel.{tn}.Facts
 {fimports}
 
-open Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel
+open Noperts.Triakis Noperts.Triakis.CornerTree Noperts.Triakis.CornerKernel
 
 set_option Elab.async false
 
@@ -319,15 +319,15 @@ theorem {tag}.ok{c.id} (hH : ∀ h f, H.Valid h f → Covered f)
   CornerAff.RTree.check_sound H hH facts fps hf hp _ _ (by decide +kernel)
     (CornerAff.holes_of {tag}.c{c.id}.holes_eq hh)
 "
-        IO.FS.writeFile s!"{outDir}/{tn}/{m}.lean" s!"import StellatedKernel.{tn}.Facts
+        IO.FS.writeFile s!"{outDir}/{tn}/{m}.lean" s!"import TriakisKernel.{tn}.Facts
 
-open Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel
+open Noperts.Triakis Noperts.Triakis.CornerTree Noperts.Triakis.CornerKernel
 
 set_option Elab.async false
 
 namespace {pre}
 
-stellated_rtree_chunks \"{dataDir}/{tn}.{tag}.rt\" {tag}
+triakis_rtree_chunks \"{dataDir}/{tn}.{tag}.rt\" {tag}
 -- data hash {hash dataS} (the loaded file is not tracked by Lake)
 
 set_option maxRecDepth 100000
@@ -336,7 +336,7 @@ set_option maxHeartbeats 0
 end {pre}
 "
       -- assembly: one theorem per chunk, children first (chunks are in post-order)
-      let gimports := "\n".intercalate (mods.toList.map fun (m, _) => s!"import StellatedKernel.{tn}.{m}")
+      let gimports := "\n".intercalate (mods.toList.map fun (m, _) => s!"import TriakisKernel.{tn}.{m}")
       let mut asm := ""
       for c in chunks do
         let tag := (modOf.getD c.id "").toLower
@@ -349,10 +349,10 @@ end {pre}
 "
       let last := chunks.size - 1
       let lastTag := (modOf.getD last "").toLower
-      IO.FS.writeFile s!"{outDir}/{tn}/Table.lean" s!"import StellatedKernel.{tn}.FactsOk
+      IO.FS.writeFile s!"{outDir}/{tn}/Table.lean" s!"import TriakisKernel.{tn}.FactsOk
 {gimports}
 
-open Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel
+open Noperts.Triakis Noperts.Triakis.CornerTree Noperts.Triakis.CornerKernel
 
 set_option Elab.async false
 

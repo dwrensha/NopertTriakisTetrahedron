@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Generate the kernel-only proof `StellatedKernel/` from the certificate packs (fetch them with
+# Generate the kernel-only proof `TriakisKernel/` from the certificate packs (fetch them with
 # scripts/fetch_packs.sh). Takes about 1–1.5 hours on 16 cores, almost all of it the chart;
-# then `lake build StellatedKernel` checks the proof (about 2.5 hours).
+# then `lake build TriakisKernel` checks the proof (about 2.5 hours).
 #
 # The generated modules refer to their data by repo-relative paths, so `lake build` must be
 # run from the repository root.
@@ -13,16 +13,16 @@ P=${1:-packs}
 lake build chartKernelGen localKernelGen kernelCorner cornerAffGen
 bin=.lake/build/bin
 # everything except the checked-in final module Main.lean is generated
-find StellatedKernel -mindepth 1 -maxdepth 1 ! -name Main.lean -exec rm -rf {} + 2>/dev/null || true
-mkdir -p StellatedKernel/data/corner StellatedKernel/logs
-log=StellatedKernel/logs
+find TriakisKernel -mindepth 1 -maxdepth 1 ! -name Main.lean -exec rm -rf {} + 2>/dev/null || true
+mkdir -p TriakisKernel/data/corner TriakisKernel/logs
+log=TriakisKernel/logs
 
 # chart table (slow: rebuilds the chart trees from the packed rows), in the background
-$bin/chartKernelGen "$P" StellatedKernel/Chart 8000 200000 novalidate > $log/chart.log 2>&1 &
+$bin/chartKernelGen "$P" TriakisKernel/Chart 8000 200000 novalidate > $log/chart.log 2>&1 &
 chart=$!
 
 # local tables
-$bin/localKernelGen "$P" StellatedKernel/Local 50 16 > $log/local.log
+$bin/localKernelGen "$P" TriakisKernel/Local 50 16 > $log/local.log
 
 # corner tables (scripts/kernel_corner_tables.tsv): integer tables, affine tables, and
 # table 49 (a slice of nine specification-checked nodes)
@@ -30,11 +30,11 @@ corner() {
   local i=$1 gen=$2 root=$3 stage=$4
   case $gen in
     int) $bin/kernelCorner ktreegen "$P/corner-v5.pack" "$i" 600 60 "$root" "$stage" \
-           StellatedKernel StellatedKernel/data/corner ;;
+           TriakisKernel TriakisKernel/data/corner ;;
     aff) $bin/cornerAffGen emit "$P/corner-v5.pack" "$i" 6 "$root" \
            "$([ "$stage" = CornerCoverage.cpocketStage ] && echo cpocket || echo none)" \
-           600 15000 StellatedKernel StellatedKernel/data/corner ;;
-    slice) $bin/kernelCorner slice "$P/corner-v5.pack" "StellatedKernel/data/corner/T$i.slice3" "$i" 0 9 ;;
+           600 15000 TriakisKernel TriakisKernel/data/corner ;;
+    slice) $bin/kernelCorner slice "$P/corner-v5.pack" "TriakisKernel/data/corner/T$i.slice3" "$i" 0 9 ;;
   esac
 }
 export -f corner
@@ -45,4 +45,4 @@ grep -v '^#' scripts/kernel_corner_tables.tsv |
 python3 scripts/gen_kernel_extra.py
 
 wait $chart || { echo "chart generation FAILED (see $log/chart.log)" >&2; exit 1; }
-echo "generated $(find StellatedKernel -name '*.lean' | wc -l) modules in StellatedKernel/"
+echo "generated $(find TriakisKernel -name '*.lean' | wc -l) modules in TriakisKernel/"

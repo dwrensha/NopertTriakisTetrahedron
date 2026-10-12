@@ -16,7 +16,7 @@ public import Mathlib.Analysis.InnerProductSpace.Adjoint
 `so3CLM` packages a rotation matrix as a continuous linear map, `outerLift` pulls a
 contact back through the outer frame, and the first-variation vector of a weighted
 contact triple is compared with its rational approximation.  These bounds feed the
-local (near-equality-pose) certificates of the stellated tetrahedron.
+local (near-equality-pose) certificates of the triakis tetrahedron.
 -/
 
 namespace Noperts

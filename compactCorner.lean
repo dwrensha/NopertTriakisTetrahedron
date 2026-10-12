@@ -1,6 +1,6 @@
-import Noperts.Stellated.NativeExecutable
-import Noperts.Stellated.PackedCornerTree
-import Noperts.Stellated.CornerKernel
+import Noperts.Triakis.NativeExecutable
+import Noperts.Triakis.PackedCornerTree
+import Noperts.Triakis.CornerKernel
 
 /-!
 Probe: how many corner split nodes whose two children are (after merging,
@@ -10,8 +10,8 @@ child's fact, split and shift on the parent box?
 `compactCorner probe IN.pack TABLE`
 -/
 
-open Noperts.Stellated
-open Noperts.Stellated.CornerTree CornerCertificate CornerPoly PackedCornerTree SparsePoly
+open Noperts.Triakis
+open Noperts.Triakis.CornerTree CornerCertificate CornerPoly PackedCornerTree SparsePoly
 
 def qf (q : ℚ) : Float :=
   (if q.num < 0 then -1 else 1) * q.num.natAbs.toFloat / q.den.toFloat
@@ -155,8 +155,8 @@ def emitCheap (tables : Array Table) (index k n : Nat) (out : String) : IO Unit 
             boxes := boxes.push b
   IO.println s!"fact {k}: S {S.length} terms, m {m}, degree {CornerKernel.maxDeg S}; {boxes.size} leaves, native cheapI pass {passN}"
   let lines := boxes.toList.map fun (D, X, H) => s!"  ({D}, {X}, {H})"
-  IO.FS.writeFile out s!"import Noperts.Stellated.CornerKernel
-open Noperts.Stellated.CornerKernel
+  IO.FS.writeFile out s!"import Noperts.Triakis.CornerKernel
+open Noperts.Triakis.CornerKernel
 
 def S0 : IPoly := {showI S}
 def boxes : List (Nat × List Int × List Int) := [

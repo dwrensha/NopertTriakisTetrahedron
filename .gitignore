@@ -1,5 +1,5 @@
 /.lake
 /.artifacts
-/StellatedKernel/*
-!/StellatedKernel/Main.lean
+/TriakisKernel/*
+!/TriakisKernel/Main.lean
 /packs/

@@ -1,4 +1,4 @@
-import Noperts.Stellated.NativeExecutable
+import Noperts.Triakis.NativeExecutable
 
 /-!
 Compact a packed local-view table: walking the tree bottom-up, a split or cut
@@ -11,10 +11,10 @@ exact `Box.ViewValid` checker, and the rewritten table is re-validated with
 `compactLocal IN.pack OUT.pack TABLE`
 -/
 
-open Noperts.Stellated
-open Noperts.Stellated.AtlasProjectiveLocalViewTree
-open Noperts.Stellated.AtlasProjectiveLocalCertificate
-open Noperts.Stellated.PackedLocalViewTree
+open Noperts.Triakis
+open Noperts.Triakis.AtlasProjectiveLocalViewTree
+open Noperts.Triakis.AtlasProjectiveLocalCertificate
+open Noperts.Triakis.PackedLocalViewTree
 
 /-- Round `q > 0` up to about ten significant decimal digits. -/
 def roundUp (q : ℚ) : ℚ :=

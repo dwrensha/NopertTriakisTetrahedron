@@ -1,4 +1,4 @@
-import Noperts.Stellated.PackedLocalViewTree
+import Noperts.Triakis.PackedLocalViewTree
 
 /-!
 Generator for the kernel local tables (not part of the proof).
@@ -12,7 +12,7 @@ Generator for the kernel local tables (not part of the proof).
 and `OUT/Assembly.lean` proving `HeadersCovered headers`.
 -/
 
-open Noperts.Stellated
+open Noperts.Triakis
 
 def pad2 (n : Nat) : String := if n < 10 then s!"0{n}" else toString n
 
@@ -38,55 +38,55 @@ def main (args : List String) : IO Unit := do
       s := s + c
     let L := s!"L{pad2 idx}"
     IO.FS.createDirAll s!"{out}/{L}"
-    IO.FS.writeFile s!"{out}/{L}/Data.lean" s!"import Noperts.Stellated.KernelLoad
+    IO.FS.writeFile s!"{out}/{L}/Data.lean" s!"import Noperts.Triakis.KernelLoad
 
-open Noperts.Stellated Noperts.Stellated.AtlasProjectiveLocalViewTree
+open Noperts.Triakis Noperts.Triakis.AtlasProjectiveLocalViewTree
 
 set_option Elab.async false
 
-namespace Noperts.Stellated.LocalK
+namespace Noperts.Triakis.LocalK
 
-stellated_local_tree \"{dir}/local-{pad2 idx}.pack\" {idx} {t}
+triakis_local_tree \"{dir}/local-{pad2 idx}.pack\" {idx} {t}
 -- data hash {hash packed} (the loaded file is not tracked by Lake)
 
 noncomputable def {t}.get (i : ℕ) : Row := LocalKernel.Tree8.get {t}.depth {t}.tree i
 
-end Noperts.Stellated.LocalK
+end Noperts.Triakis.LocalK
 "
     let parts := (List.range ((starts.size + part - 1) / part)).map fun k =>
       (starts.toList.drop (k * part)).take part
     for (k, ps) in (List.range parts.length).zip parts do
       let body := String.join (ps.map fun (st, c) =>
         s!"theorem {t}.r{st} : RowsValidRangeAt {t}.sym {t}.r {t}.get {t}.size {st} {c} := by\n  decide +kernel\n\n")
-      IO.FS.writeFile s!"{out}/{L}/P{k}.lean" s!"import StellatedKernel.Local.{L}.Data
+      IO.FS.writeFile s!"{out}/{L}/P{k}.lean" s!"import TriakisKernel.Local.{L}.Data
 
-open Noperts.Stellated Noperts.Stellated.AtlasProjectiveLocalViewTree
+open Noperts.Triakis Noperts.Triakis.AtlasProjectiveLocalViewTree
 
 set_option Elab.async false
 
-namespace Noperts.Stellated.LocalK
+namespace Noperts.Triakis.LocalK
 
 set_option maxRecDepth 100000
 set_option maxHeartbeats 0
 
-{body}end Noperts.Stellated.LocalK
+{body}end Noperts.Triakis.LocalK
 "
     let partImports := "\n".intercalate ((List.range parts.length).map fun k =>
-      s!"import StellatedKernel.Local.{L}.P{k}")
+      s!"import TriakisKernel.Local.{L}.P{k}")
     -- chain the slices
     let mut chain := s!"{t}.r0"
     for (st, _) in starts.toList.drop 1 do
       chain := s!"(rowsValidRange_append {chain} {t}.r{st})"
     let tri := s!"PackedLocalViewTree.depth3Triangle {idx}"
     IO.FS.writeFile s!"{out}/L{pad2 idx}.lean" s!"{partImports}
-import StellatedKernel.Chart.Headers
+import TriakisKernel.Chart.Headers
 
-open Noperts.Stellated Noperts.Stellated.AtlasProjectiveLocalViewTree
-open Noperts.Stellated.ChartKernelTree
+open Noperts.Triakis Noperts.Triakis.AtlasProjectiveLocalViewTree
+open Noperts.Triakis.ChartKernelTree
 
 set_option Elab.async false
 
-namespace Noperts.Stellated.LocalK
+namespace Noperts.Triakis.LocalK
 
 set_option maxRecDepth 100000
 set_option maxHeartbeats 0
@@ -119,24 +119,24 @@ theorem {t}.covered (h : Header) (hh : ChartK.headers ⟨{idx}, by decide⟩ = s
   subst e1 e2 e3 e4
   exact localCovered_of_table {t}.table {t}.valid
 
-end Noperts.Stellated.LocalK
+end Noperts.Triakis.LocalK
 "
     IO.println s!"table {idx}: {n} rows, {starts.size} slices, {parts.length} parts"
-  let imports := present.toList.map fun idx => s!"import StellatedKernel.Local.L{pad2 idx}"
+  let imports := present.toList.map fun idx => s!"import TriakisKernel.Local.L{pad2 idx}"
   let cases := (List.range 64).map fun idx =>
     if present.contains idx then s!"  · exact t{pad2 idx}.covered h hh"
     else "  · simp [ChartK.headers, ChartK.headerList] at hh"
   IO.FS.writeFile s!"{out}/Assembly.lean" s!"{"\n".intercalate imports}
 
-open Noperts.Stellated Noperts.Stellated.ChartKernelTree
+open Noperts.Triakis Noperts.Triakis.ChartKernelTree
 
-namespace Noperts.Stellated.LocalK
+namespace Noperts.Triakis.LocalK
 
 theorem headers_covered : HeadersCovered ChartK.headers := by
   intro idx h hh
   fin_cases idx
 {"\n".intercalate cases}
 
-end Noperts.Stellated.LocalK
+end Noperts.Triakis.LocalK
 "
   IO.println s!"{present.size} tables"

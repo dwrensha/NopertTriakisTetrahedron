@@ -13,7 +13,7 @@ public import Noperts.PoseInterval
 The relative rotation `outerRotᵀ * innerRot` of a matrix pose, and the fact that
 every rotation in `SO(3)` is `rotRM θ φ α` for parameters in the standard bounded
 ranges.  These are the algebraic inputs to the pose reduction in
-`Noperts.Stellated.Reduction`.
+`Noperts.Triakis.Reduction`.
 -/
 
 namespace Noperts

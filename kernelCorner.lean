@@ -1,8 +1,8 @@
-import Noperts.Stellated.NativeExecutable
-import Noperts.Stellated.PackedCornerTree
-import Noperts.Stellated.CornerKernelTree
-import Noperts.Stellated.PackedKTree
-import Noperts.Stellated.FlipPolysBase
+import Noperts.Triakis.NativeExecutable
+import Noperts.Triakis.PackedCornerTree
+import Noperts.Triakis.CornerKernelTree
+import Noperts.Triakis.PackedKTree
+import Noperts.Triakis.FlipPolysBase
 
 /-!
 Convert corner tables for the kernel: give each shared fact its polynomial
@@ -12,9 +12,9 @@ bound into `Leaf.sharedP`, and refine the others by splitting.
 `kernelCorner stats IN.pack DEPTH [TABLES...]`
 -/
 
-open Noperts.Stellated
-open Noperts.Stellated.CornerTree CornerCertificate CornerPoly PackedCornerTree SparsePoly
-open Noperts.Stellated.CornerKernel
+open Noperts.Triakis
+open Noperts.Triakis.CornerTree CornerCertificate CornerPoly PackedCornerTree SparsePoly
+open Noperts.Triakis.CornerKernel
 
 instance : Inhabited Row := ⟨⟨false, .plain, [], [], ⟨fun _ _ => 0, fun _ => 0, fun _ => 0⟩, [], [], []⟩⟩
 instance : Inhabited FactPoly := ⟨⟨[], [], 1⟩⟩
@@ -337,12 +337,12 @@ def emitKTree (inPath : String) (index node budget : ℕ) (slicePath out : Strin
   let ref ← IO.mkRef budget
   let src ← ktreeSrc t f node ref
   let ks := (List.range t.facts.size).toArray.toList
-  IO.FS.writeFile out s!"import Noperts.Stellated.KernelLoad
-import Noperts.Stellated.CornerKernelTree
+  IO.FS.writeFile out s!"import Noperts.Triakis.KernelLoad
+import Noperts.Triakis.CornerKernelTree
 
-open Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel
+open Noperts.Triakis Noperts.Triakis.CornerTree Noperts.Triakis.CornerKernel
 
-stellated_corner_chunk \"{slicePath}\" 0 0 1 chunk
+triakis_corner_chunk \"{slicePath}\" 0 0 1 chunk
 def H0 : Handoffs := \{ Valid := fun _ _ => False, dec := fun _ _ => isFalse id }
 def fr : IFrame := {ktreeSrc.reprFrame f}
 def tr : KTree := .anchor {ks} {src}
@@ -546,21 +546,21 @@ def ktreeGen (inPath : String) (index budget groupSize : ℕ) (rootE stageE outD
     return g
   IO.FS.writeFile s!"{outDir}/{tn}/heavy.txt"
     ("\n".intercalate ((List.range groups).filter (fun g => groupL[g]!.any (·.heavy)) |>.map fun g =>
-      s!"StellatedKernel.{tn}.G{g}"))
-  let pre := s!"Noperts.Stellated.KernelCorner.{tn}"
+      s!"TriakisKernel.{tn}.G{g}"))
+  let pre := s!"Noperts.Triakis.KernelCorner.{tn}"
   -- Facts module
-  IO.FS.writeFile s!"{outDir}/{tn}/Facts.lean" s!"import Noperts.Stellated.KernelLoad
-import Noperts.Stellated.AtlasProjectiveSolutionTree
-import Noperts.Stellated.CornerCoverage
-import Noperts.Stellated.CornerHandoffI
+  IO.FS.writeFile s!"{outDir}/{tn}/Facts.lean" s!"import Noperts.Triakis.KernelLoad
+import Noperts.Triakis.AtlasProjectiveSolutionTree
+import Noperts.Triakis.CornerCoverage
+import Noperts.Triakis.CornerHandoffI
 
-open Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel
+open Noperts.Triakis Noperts.Triakis.CornerTree Noperts.Triakis.CornerKernel
 
 set_option Elab.async false
 
 namespace {pre}
 
-stellated_corner_chunk \"{factsPath}\" 0 0 1 src
+triakis_corner_chunk \"{factsPath}\" 0 0 1 src
 -- data hash {hash factsS} (the loaded file is not tracked by Lake)
 noncomputable abbrev facts : Array CornerCertificate.Row := src.facts.toArray
 noncomputable abbrev fps : Array FactPoly := src.fpolys.toArray
@@ -584,15 +584,15 @@ end {pre}
     let dataPath := s!"{dataDir}/{tn}.g{g}.kt"
     let dataS := ",".intercalate (dout.toList.map toString) ++ ","
     IO.FS.writeFile dataPath dataS
-    let mut src := s!"import {"StellatedKernel"}.{tn}.Facts
+    let mut src := s!"import {"TriakisKernel"}.{tn}.Facts
 
-open Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel
+open Noperts.Triakis Noperts.Triakis.CornerTree Noperts.Triakis.CornerKernel
 
 set_option Elab.async false
 
 namespace {pre}
 
-stellated_ktree_chunks \"{dataPath}\" g{g}
+triakis_ktree_chunks \"{dataPath}\" g{g}
 -- data hash {hash dataS} (the loaded file is not tracked by Lake)
 
 set_option maxRecDepth 100000
@@ -611,11 +611,11 @@ theorem g{g}.ok{c.id} (hH : ∀ h f, H.Valid h f → Covered f)
     src := src ++ s!"\nend {pre}\n"
     IO.FS.writeFile s!"{outDir}/{tn}/G{g}.lean" src
   -- Assembly: bottom-up (reverse BFS order)
-  let mut asm := s!"import StellatedKernel.{tn}.Facts\n"
+  let mut asm := s!"import TriakisKernel.{tn}.Facts\n"
   for g in List.range groups do
-    asm := asm ++ s!"import StellatedKernel.{tn}.G{g}\n"
+    asm := asm ++ s!"import TriakisKernel.{tn}.G{g}\n"
   asm := asm ++ s!"
-open Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel
+open Noperts.Triakis Noperts.Triakis.CornerTree Noperts.Triakis.CornerKernel
 
 set_option Elab.async false
 
@@ -653,9 +653,9 @@ end {pre}
   let nf := t.facts.size
   let fgroups := (nf + 9) / 10
   for fg in List.range fgroups do
-    let mut src := s!"import StellatedKernel.{tn}.Facts
+    let mut src := s!"import TriakisKernel.{tn}.Facts
 
-open Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel
+open Noperts.Triakis Noperts.Triakis.CornerTree Noperts.Triakis.CornerKernel
 
 set_option Elab.async false
 
@@ -673,13 +673,13 @@ theorem fpoly{i} : ∀ h : {i} < fps.size, FactPolyDAt facts fps Ds ⟨{i}, h⟩
 "
     src := src ++ s!"\nend {pre}\n"
     IO.FS.writeFile s!"{outDir}/{tn}/F{fg}.lean" src
-  let mut fok := s!"import StellatedKernel.{tn}.Facts\n"
+  let mut fok := s!"import TriakisKernel.{tn}.Facts\n"
   for fg in List.range fgroups do
-    fok := fok ++ s!"import StellatedKernel.{tn}.F{fg}\n"
+    fok := fok ++ s!"import TriakisKernel.{tn}.F{fg}\n"
   let factCases := String.join ((List.range nf).map fun i => s!"\n    | {i}, h => fact{i} h")
   let fpCases := String.join ((List.range nf).map fun i => s!"\n    | {i}, h => fpoly{i} h")
   fok := fok ++ s!"
-open Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel
+open Noperts.Triakis Noperts.Triakis.CornerTree Noperts.Triakis.CornerKernel
 
 set_option Elab.async false
 
@@ -714,10 +714,10 @@ theorem fbs_ok : FBoxesOk facts fbs := by decide +kernel
 end {pre}
 "
   IO.FS.writeFile s!"{outDir}/{tn}/FactsOk.lean" fok
-  IO.FS.writeFile s!"{outDir}/{tn}/Table.lean" s!"import StellatedKernel.{tn}.Assembly
-import StellatedKernel.{tn}.FactsOk
+  IO.FS.writeFile s!"{outDir}/{tn}/Table.lean" s!"import TriakisKernel.{tn}.Assembly
+import TriakisKernel.{tn}.FactsOk
 
-open Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel
+open Noperts.Triakis Noperts.Triakis.CornerTree Noperts.Triakis.CornerKernel
 
 set_option Elab.async false
 
@@ -1125,14 +1125,14 @@ def flipPolys (inPath outPath : String) : IO Unit := do
   cases := s!"\n  all_goals (obtain ⟨rfl, rfl, rfl⟩ := ‹_›; first | {alts})"
   IO.FS.writeFile outPath s!"module
 
-public import Noperts.Stellated.FlipPolysBase
+public import Noperts.Triakis.FlipPolysBase
 
 @[expose] public section
 
 /-! Flip polynomial data for the flip leaves of the corner tables (generated by
 `kernelCorner flippolys`). -/
 
-namespace Noperts.Stellated.CornerKernel
+namespace Noperts.Triakis.CornerKernel
 
 open CornerPoly CornerTree SparsePoly FlipPrune
 
@@ -1148,7 +1148,7 @@ theorem flipFP_ok \{seg : Bool} \{kind : ChartKind} \{k : Fin 12} \{fp : FactPol
   unfold flipFP at h
   split_ifs at h <;> (try simp at h) <;> subst h{cases}
 
-end Noperts.Stellated.CornerKernel
+end Noperts.Triakis.CornerKernel
 "
   IO.println s!"{i} flip polynomials"
 

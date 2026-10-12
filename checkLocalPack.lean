@@ -1,11 +1,11 @@
-import Noperts.Stellated.NativeExecutable
+import Noperts.Triakis.NativeExecutable
 
 /-!
 Check one packed local-view table: `checkLocalPack NN file.pack`.
 -/
 
-open Noperts.Stellated
-open Noperts.Stellated.NativeExecutable
+open Noperts.Triakis
+open Noperts.Triakis.NativeExecutable
 
 def main (args : List String) : IO Unit := do
   let (index, path) ← match args with

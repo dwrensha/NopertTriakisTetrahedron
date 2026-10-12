@@ -1,6 +1,6 @@
-import Noperts.Stellated.NativeExecutable
-import Noperts.Stellated.PackedSolutionTree
-import Noperts.Stellated.LocalKernel
+import Noperts.Triakis.NativeExecutable
+import Noperts.Triakis.PackedSolutionTree
+import Noperts.Triakis.LocalKernel
 
 /-!
 Profiling aid (not part of the proof): times each conjunct of
@@ -8,10 +8,10 @@ Profiling aid (not part of the proof): times each conjunct of
 packed local table.  `benchLocalRow DIR TABLE NROWS`.
 -/
 
-open Noperts.Stellated
-open Noperts.Stellated.AtlasProjectiveLocalViewTree
-open Noperts.Stellated.AtlasProjectiveLocalCertificate
-open Noperts.Stellated.AtlasProjectiveEdgeCertificate (SignedTriangleValid)
+open Noperts.Triakis
+open Noperts.Triakis.AtlasProjectiveLocalViewTree
+open Noperts.Triakis.AtlasProjectiveLocalCertificate
+open Noperts.Triakis.AtlasProjectiveEdgeCertificate (SignedTriangleValid)
 
 private def pad2 (n : Nat) : String :=
   if n < 10 then s!"0{n}" else toString n

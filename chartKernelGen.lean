@@ -1,8 +1,8 @@
-import Noperts.Stellated.PackedSolutionTree
-import Noperts.Stellated.PackedLocalViewTree
-import Noperts.Stellated.PackedCTree
-import Noperts.Stellated.ChartKernelMixed
-import Noperts.Stellated.ChartKernelInt
+import Noperts.Triakis.PackedSolutionTree
+import Noperts.Triakis.PackedLocalViewTree
+import Noperts.Triakis.PackedCTree
+import Noperts.Triakis.ChartKernelMixed
+import Noperts.Triakis.ChartKernelInt
 import Std.Data.HashMap
 
 /-!
@@ -16,9 +16,9 @@ validates it natively, cuts it into chunks of estimated kernel cost about
 `OUT/data/M<k>.ct`, `OUT/M<k>.lean`, `OUT/Headers.lean` and `OUT/Assembly.lean`.
 -/
 
-open Noperts.Stellated
-open Noperts.Stellated.AtlasProjectiveSolutionTree
-open Noperts.Stellated.ChartKernelTree
+open Noperts.Triakis
+open Noperts.Triakis.AtlasProjectiveSolutionTree
+open Noperts.Triakis.ChartKernelTree
 
 instance : Inhabited CTree := ⟨.corner⟩
 
@@ -269,40 +269,40 @@ def main (args : List String) : IO Unit := do
   chunkI_sound headers hhdr hcorner _ m{k}.c{c.id}.tree (by decide +kernel)
     (holes_of m{k}.c{c.id}.holes_eq hh)
 "
-    IO.FS.writeFile s!"{out}/M{k}.lean" s!"import Noperts.Stellated.KernelLoadChart
-import Noperts.Stellated.ChartKernelInt
-import StellatedKernel.Chart.Headers
+    IO.FS.writeFile s!"{out}/M{k}.lean" s!"import Noperts.Triakis.KernelLoadChart
+import Noperts.Triakis.ChartKernelInt
+import TriakisKernel.Chart.Headers
 
-open Noperts.Stellated Noperts.Stellated.ChartKernelTree
-open Noperts.Stellated.AtlasProjectiveSolutionTree
+open Noperts.Triakis Noperts.Triakis.ChartKernelTree
+open Noperts.Triakis.AtlasProjectiveSolutionTree
 
 -- synchronous elaboration frees each chunk's kernel state before the next (20 → 13 GB peak)
 set_option Elab.async false
 
-namespace Noperts.Stellated.ChartK
+namespace Noperts.Triakis.ChartK
 
-stellated_ctree_chunks \"{out}/data/M{k}.ct\" m{k}
+triakis_ctree_chunks \"{out}/data/M{k}.ct\" m{k}
 -- data hash {hash dataS} (the loaded file is not tracked by Lake)
 
 set_option maxRecDepth 100000
 set_option maxHeartbeats 0
 
 {"\n".intercalate thms}
-end Noperts.Stellated.ChartK
+end Noperts.Triakis.ChartK
 "
   -- headers
-  IO.FS.writeFile s!"{out}/Headers.lean" s!"import Noperts.Stellated.ChartKernelTree
+  IO.FS.writeFile s!"{out}/Headers.lean" s!"import Noperts.Triakis.ChartKernelTree
 
-open Noperts.Stellated Noperts.Stellated.ChartKernelTree
+open Noperts.Triakis Noperts.Triakis.ChartKernelTree
 
-namespace Noperts.Stellated.ChartK
+namespace Noperts.Triakis.ChartK
 
 def headerList : List (Option Header) := [
   {",\n  ".intercalate (headers.toList.map headerS)}]
 
 def headers (i : Fin 64) : Option Header := headerList.getD i.val none
 
-end Noperts.Stellated.ChartK
+end Noperts.Triakis.ChartK
 "
   -- assembly: post-order, children before parents
   let mut idOf : Std.HashMap String ℕ := {}
@@ -314,15 +314,15 @@ end Noperts.Stellated.ChartK
     NoRupert 0 (framePath m{k}.c{c.id}.steps).1 (framePath m{k}.c{c.id}.steps).2 :=
   m{k}.c{c.id}.ok hhdr hcorner {holesProof ids}
 "
-  let imports := (List.range modules.size).map fun k => s!"import StellatedKernel.Chart.M{k}"
+  let imports := (List.range modules.size).map fun k => s!"import TriakisKernel.Chart.M{k}"
   IO.FS.writeFile s!"{out}/Assembly.lean" s!"{"\n".intercalate imports}
 
-open Noperts.Stellated Noperts.Stellated.ChartKernelTree
-open Noperts.Stellated.AtlasProjectiveSolutionTree
+open Noperts.Triakis Noperts.Triakis.ChartKernelTree
+open Noperts.Triakis.AtlasProjectiveSolutionTree
 
 set_option Elab.async false
 
-namespace Noperts.Stellated.ChartK
+namespace Noperts.Triakis.ChartK
 
 set_option maxRecDepth 100000
 set_option maxHeartbeats 0
@@ -346,6 +346,6 @@ theorem chart_root (hhdr : HeadersCovered headers) (hcorner : CornerCovered) :
     NoRupert 0 (AtlasPose.rootInterval ℚ) .sphere :=
   a{chunks.size - 1} hhdr hcorner
 
-end Noperts.Stellated.ChartK
+end Noperts.Triakis.ChartK
 "
   IO.println "done"

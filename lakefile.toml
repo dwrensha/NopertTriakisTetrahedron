@@ -22,20 +22,20 @@ rev = "v4.34.1"
 name = "Noperts"
 
 # The generated kernel-only proof (`scripts/gen_kernel.sh`); not a default target: check it
-# with `lake build StellatedKernel`.
+# with `lake build TriakisKernel`.
 
 [[lean_lib]]
-name = "StellatedKernel"
-globs = ["StellatedKernel.+"]
+name = "TriakisKernel"
+globs = ["TriakisKernel.+"]
 
 [[lean_exe]]
-name = "constructStellated"
-root = "constructStellated"
+name = "constructTriakis"
+root = "constructTriakis"
 buildType = "release"
 
 [[lean_exe]]
-name = "checkStellatedRows"
-root = "checkStellatedRows"
+name = "checkTriakisRows"
+root = "checkTriakisRows"
 buildType = "release"
 
 [[lean_exe]]
@@ -49,8 +49,8 @@ root = "checkLocalPack"
 buildType = "release"
 
 [[lean_exe]]
-name = "stellatedDryRun"
-root = "stellatedDryRun"
+name = "triakisDryRun"
+root = "triakisDryRun"
 buildType = "release"
 
 [[lean_exe]]

@@ -1,4 +1,4 @@
-import Noperts.Stellated.PackedCornerTree
+import Noperts.Triakis.PackedCornerTree
 
 /-!
 Profiling aid (not part of the proof): times each conjunct of
@@ -6,8 +6,8 @@ Profiling aid (not part of the proof): times each conjunct of
 whole-row checks of every node kind.  `benchCornerRow corner.pack TABLE NROWS`.
 -/
 
-open Noperts.Stellated
-open Noperts.Stellated.CornerTree CornerCertificate CornerPoly PackedCornerTree
+open Noperts.Triakis
+open Noperts.Triakis.CornerTree CornerCertificate CornerPoly PackedCornerTree
 open SparsePoly
 
 def timeIt (label : String) (f : Unit → Bool) : IO Unit := do
