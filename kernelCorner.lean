@@ -348,7 +348,8 @@ def fr : IFrame := {ktreeSrc.reprFrame f}
 def tr : KTree := .anchor {ks} {src}
 set_option maxRecDepth 100000
 set_option maxHeartbeats 0
-theorem tr_ok : KTree.check H0 chunk.facts.toArray chunk.fpolys.toArray fr [] tr = true := by
+theorem tr_ok : KTree.check H0 chunk.facts.toArray chunk.fpolys.toArray chunk.pfpolys.toArray
+    chunk.fboxes.toArray (fun _ _ => false) chunk.dpolys.toArray fr [] tr = true := by
   decide +kernel
 "
   IO.println s!"emitted subtree at node {node}, budget left {← ref.get}"
@@ -405,8 +406,8 @@ partial def flipSplit (k : Fin 12) (f : IFrame) : ℕ → Option (Array Nat)
       | none => none
       | some v =>
         let M := f.X.getD v 0
-        match flipSplit k (f.child v M 1 false).reduce (depth - 1),
-            flipSplit k (f.child v M 1 true).reduce (depth - 1) with
+        match flipSplit k (f.childR v M 1 false) (depth - 1),
+            flipSplit k (f.childR v M 1 true) (depth - 1) with
         | some a, some b => some (#[0, v, zig M, 1] ++ a ++ b)
         | _, _ => none
 
@@ -446,8 +447,8 @@ partial def emitNode (t : Table) (homes : Std.HashMap String (List ℕ)) (anchor
       let sc := m.den / Nat.gcd f.D m.den
       let M := (m * (f.D * sc : ℕ)).num
       body.modify (· ++ #[0, v, zig M, sc])
-      emitNode t homes anchored size B size[j]! false (f.child v M sc false).reduce lo budget body facts children queue nextId
-      emitNode t homes anchored size B size[j]! false (f.child v M sc true).reduce hi budget body facts children queue nextId
+      emitNode t homes anchored size B size[j]! false (f.childR v M sc false) lo budget body facts children queue nextId
+      emitNode t homes anchored size B size[j]! false (f.childR v M sc true) hi budget body facts children queue nextId
   | .leaf _ _ (.sharedP _ k) =>
       facts.modify (·.insert k)
       body.modify (· ++ #[2, k])
@@ -521,10 +522,9 @@ def ktreeGen (inPath : String) (index budget groupSize : ℕ) (rootE stageE outD
       out := out.push (xs.toList.drop i |>.take n)
       i := i + n
     return out
-  -- specification-checked chunks in modules of 3, all slow flips of the table in one
-  -- module (the kernel cache resets per theorem, so heap stays near one leaf's), spread evenly
-  -- through the import order: Lake starts ready modules roughly in import order, so
-  -- spreading keeps heavy modules from running all at once
+  -- specification-checked chunks in modules of 3 and slow flips in modules of 2 (each takes
+  -- tens of seconds), spread evenly through the import order: Lake starts ready modules
+  -- roughly in import order, so spreading keeps heavy modules from running all at once
   -- spread `b` evenly through `a`
   let spread := fun (a b : Array (List ChunkOut)) => Id.run do
     let mut out := #[]
@@ -537,7 +537,7 @@ def ktreeGen (inPath : String) (index budget groupSize : ℕ) (rootE stageE outD
       out := out.push b[bi]!; bi := bi + 1
     return out
   let groupL := spread (chop light groupSize)
-    (spread (chop (heavyC.filter (!·.slow)) 3) (chop (heavyC.filter (·.slow)) (max 1 (heavyC.filter (·.slow)).size)))
+    (spread (chop (heavyC.filter (!·.slow)) 3) (chop (heavyC.filter (·.slow)) 2))
   let groups := groupL.size
   let groupOf : Array ℕ := Id.run do
     let mut g : Array ℕ := Array.replicate chunks.size 0
@@ -552,6 +552,7 @@ def ktreeGen (inPath : String) (index budget groupSize : ℕ) (rootE stageE outD
   IO.FS.writeFile s!"{outDir}/{tn}/Facts.lean" s!"import Noperts.Stellated.KernelLoad
 import Noperts.Stellated.AtlasProjectiveSolutionTree
 import Noperts.Stellated.CornerCoverage
+import Noperts.Stellated.CornerHandoffI
 
 open Noperts.Stellated Noperts.Stellated.CornerTree Noperts.Stellated.CornerKernel
 
@@ -563,7 +564,14 @@ stellated_corner_chunk \"{factsPath}\" 0 0 1 src
 -- data hash {hash factsS} (the loaded file is not tracked by Lake)
 noncomputable abbrev facts : Array CornerCertificate.Row := src.facts.toArray
 noncomputable abbrev fps : Array FactPoly := src.fpolys.toArray
+noncomputable abbrev pfs : Array PFP := src.pfpolys.toArray
+noncomputable abbrev fbs : Array FBox := src.fboxes.toArray
+noncomputable abbrev Ds : Array SparsePoly.Poly := src.dpolys.toArray
 abbrev H : Handoffs := CornerCoverage.stage AtlasProjectiveSolutionTree.cornerEps {stageE}
+abbrev HB : Handoff → IFrame → Bool := stageI AtlasProjectiveSolutionTree.cornerEps {stageE}
+
+theorem HB_ok : ∀ h f, f.Good → HB h f = true → H.Valid h f.toFrame :=
+  fun h f hg hI => stageI_sound _ _ h f hg hI
 
 end {pre}
 "
@@ -594,9 +602,11 @@ set_option maxHeartbeats 0
       src := src ++ s!"
 theorem g{g}.ok{c.id} (hH : ∀ h f, H.Valid h f → Covered f)
     (hf : ∀ fact ∈ facts, fact.KeyFacts) (hp : FactPolysOk facts fps)
+    (hq : PFPsOk packedW fps pfs) (hb : FBoxesOk facts fbs) (hd : DsOk facts Ds)
     (hh : ∀ x ∈ g{g}.c{c.id}.tree.holes, ICovered x) : ICovered g{g}.c{c.id}.frame :=
-  check_sound H facts fps hH hf hp _ _ [] (IFrame.good_of_wf _ (by decide +kernel))
-    (activeInv_nil _ _) (by decide +kernel) hh
+  check_sound H facts fps pfs fbs HB Ds packedW hH hf hp hq hb HB_ok hd _ _ []
+    (IFrame.good_of_wf _ (by decide +kernel))
+    (activeInv_nil _ _ _ _) (by decide +kernel) hh
 "
     src := src ++ s!"\nend {pre}\n"
     IO.FS.writeFile s!"{outDir}/{tn}/G{g}.lean" src
@@ -616,22 +626,23 @@ set_option maxHeartbeats 0
 
 section
 variable (hH : ∀ h f, H.Valid h f → Covered f) (hf : ∀ fact ∈ facts, fact.KeyFacts)
-  (hp : FactPolysOk facts fps)
-include hH hf hp
+  (hp : FactPolysOk facts fps) (hq : PFPsOk packedW fps pfs) (hb : FBoxesOk facts fbs)
+  (hd : DsOk facts Ds)
+include hH hf hp hq hb hd
 "
   for c in chunks.reverse do
     let g := groupOf[c.id]!
     let holes := ", ".intercalate (c.children.toList.map fun k => s!"g{groupOf[k]!}.c{k}.frame")
     let proofs := c.children.toList.foldr (fun k acc =>
-      s!"List.forall_mem_cons.2 ⟨cov{k} hH hf hp, {acc}⟩") "List.forall_mem_nil _"
+      s!"List.forall_mem_cons.2 ⟨cov{k} hH hf hp hq hb hd, {acc}⟩") "List.forall_mem_nil _"
     asm := asm ++ s!"
 theorem cov{c.id} : ICovered g{g}.c{c.id}.frame :=
-  g{g}.ok{c.id} hH hf hp (holes_of_eq (by decide +kernel : g{g}.c{c.id}.tree.holes = [{holes}])
+  g{g}.ok{c.id} hH hf hp hq hb hd (holes_of_eq (by decide +kernel : g{g}.c{c.id}.tree.holes = [{holes}])
     ({proofs}))
 "
   asm := asm ++ s!"
 theorem covered : Covered {rootE} :=
-  covered_of_toFrame _ (by decide +kernel) _ (by decide +kernel) (cov0 hH hf hp)
+  covered_of_toFrame _ (by decide +kernel) _ (by decide +kernel) (cov0 hH hf hp hq hb hd)
 
 end
 
@@ -658,7 +669,7 @@ set_option maxHeartbeats 0
         src := src ++ s!"
 theorem fact{i} : ∀ h : {i} < facts.size, (facts[{i}]'h).KeyFacts := by decide +kernel
 
-theorem fpoly{i} : ∀ h : {i} < fps.size, FactPolyAt facts fps ⟨{i}, h⟩ := by decide +kernel
+theorem fpoly{i} : ∀ h : {i} < fps.size, FactPolyDAt facts fps Ds ⟨{i}, h⟩ := by decide +kernel
 "
     src := src ++ s!"\nend {pre}\n"
     IO.FS.writeFile s!"{outDir}/{tn}/F{fg}.lean" src
@@ -684,12 +695,21 @@ theorem facts_ok : ∀ fact ∈ facts, fact.KeyFacts := by
   obtain ⟨i, hi, rfl⟩ := Array.getElem_of_mem hm
   exact key i hi
 
-theorem fps_ok : FactPolysOk facts fps := by
+theorem fpsD_ok : ∀ k : Fin fps.size, FactPolyDAt facts fps Ds k := by
   have hsize : fps.size = {nf} := by decide +kernel
-  have key : ∀ i (h : i < fps.size), FactPolyAt facts fps ⟨i, h⟩ := fun i h => match i, h with{fpCases}
+  have key : ∀ i (h : i < fps.size), FactPolyDAt facts fps Ds ⟨i, h⟩ := fun i h => match i, h with{fpCases}
     | _ + {nf}, h => absurd h (by omega)
   intro k
   exact key k.val k.isLt
+
+theorem fps_ok : FactPolysOk facts fps := fun k => (fpsD_ok k).1
+
+theorem Ds_ok : DsOk facts Ds :=
+  DsOk.of_getElem? (by decide +kernel) (by decide +kernel) fun k => (fpsD_ok k).2
+
+theorem pfs_ok : PFPsOk packedW fps pfs := by decide +kernel
+
+theorem fbs_ok : FBoxesOk facts fbs := by decide +kernel
 
 end {pre}
 "
@@ -706,36 +726,40 @@ namespace {pre}
 set_option maxRecDepth 100000
 
 theorem table_covered (hH : ∀ h f, H.Valid h f → Covered f) : Covered {rootE} :=
-  covered hH facts_ok fps_ok
+  covered hH facts_ok fps_ok pfs_ok fbs_ok Ds_ok
 
 end {pre}
 "
   IO.println s!"wrote {groups} groups to {outDir}/{tn}"
 
 /-- Natively evaluate the generated chunks of a group file against the table. -/
-partial def explain (H : Handoffs) (facts : Array Row) (fps : Array FactPoly) (f : IFrame)
-    (act : List (ℕ × Bool)) : KTree → IO Unit
+partial def explain (H : Handoffs) (facts : Array Row) (fps : Array FactPoly) (pfs : Array PFP)
+    (fbs : Array FBox) (f : IFrame) (act : List ActE) : KTree → IO Unit
   | .split v M s lo hi => do
       unless v < f.X.length && 0 < s do IO.println s!"bad split header v={v} len={f.X.length}"
-      explain H facts fps (f.child v M s false).reduce act lo
-      explain H facts fps (f.child v M s true).reduce act hi
+      explain H facts fps pfs fbs (f.childR v M s false) act lo
+      explain H facts fps pfs fbs (f.childR v M s true) act hi
   | .anchor ks t => do
       for k in ks do
-        unless anchorOk facts f k do IO.println s!"anchor {k} fails at {repr f.X} D={f.D}"
-      explain H facts fps f (ks.map (fun k => (k, anchorFlag facts k)) ++ act) t
+        unless anchorOk facts pfs fbs f k do IO.println s!"anchor {k} fails at {repr f.X} D={f.D}"
+      explain H facts fps pfs fbs f
+        (ks.map (fun k => (k, anchorFlag facts k, (pfs[k]?).getD default)) ++ act) t
   | .leafP k => do
       unless leafPOk fps f act k do
-        IO.println s!"leafP {k} fails: lookup {act.lookup k} cheap {(fps[k]?.map fun fp => cheapI7 fp f)}"
+        IO.println s!"leafP {k} fails: flag {(lookupA k act).map (·.1)} cheap {(fps[k]?.map fun fp => cheapI7 fp f)}"
   | t => do
-      unless KTree.check H facts fps f act t do IO.println s!"other leaf fails"
+      unless KTree.check H facts fps pfs fbs (fun _ _ => false) #[] f act t do
+        IO.println s!"other leaf fails"
 
 def checkGroup (pack group : String) (index : ℕ) (stage : Handoff → Bool) : IO Unit := do
   let t := (decodeTablesV3 (← IO.FS.readFile pack))[index]!
   let chunks := PackedKTree.decodeChunks (← IO.FS.readFile group)
   let H := CornerCoverage.stage AtlasProjectiveSolutionTree.cornerEps stage
+  let pfs := t.fpolys.map (mkPFP packedW)
+  let fbs := t.facts.map mkFBox
   for (id, f, tr) in chunks.toList.take 2 do
-    IO.println s!"chunk {id}: wf {f.WF} check {KTree.check H t.facts t.fpolys f [] tr}"
-    explain H t.facts t.fpolys f [] tr
+    IO.println s!"chunk {id}: wf {f.WF} check {KTree.check H t.facts t.fpolys pfs fbs (fun _ _ => false) #[] f [] tr}"
+    explain H t.facts t.fpolys pfs fbs f [] tr
 
 def directCheap (pack : String) (index : ℕ) : IO Unit := do
   let t := (decodeTablesV3 (← IO.FS.readFile pack))[index]!

@@ -2,6 +2,8 @@ module
 
 public import Noperts.Stellated.CornerTree
 public import Noperts.Stellated.FlipPolys
+public import Noperts.Stellated.CornerKernelPacked
+public import Noperts.Stellated.CornerAnchorI
 
 @[expose] public section
 
@@ -121,6 +123,24 @@ theorem mapR_eq (g : ℤ → ℤ) : ∀ l : List ℤ, mapR g l = l.map g
 theorem gcdL_cons (x : ℤ) (l : List ℤ) (acc : ℕ) : gcdL (x :: l) acc = Nat.gcd x.natAbs (gcdL l acc) :=
   rfl
 
+/-- `l` with entry `j` replaced by `x` (`List.set`, by `List.rec`). -/
+def setR (x : ℤ) (l : List ℤ) : ℕ → List ℤ :=
+  @List.rec ℤ (fun _ => ℕ → List ℤ) (fun _ => [])
+    (fun y tl ih j => Nat.rec (motive := fun _ => List ℤ) (x :: tl) (fun j' _ => y :: ih j') j) l
+
+/-- Half of a frame in coordinate `v`, for an even radius: the other coordinates and the
+denominator stay. -/
+def IFrame.half (f : IFrame) (v : ℕ) (upper : Bool) : IFrame :=
+  let h2 := Int.ediv (f.H.getD v 0) 2
+  let xv := f.X.getD v 0
+  ⟨f.seg, f.kind, f.D, setR (cond upper (Int.add xv h2) (Int.sub xv h2)) f.X v, setR h2 f.H v⟩
+
+/-- The child frame of a split: a bisection at the center with an even radius is `half`
+(the child up to a factor of two); any other split is the reduced child. -/
+def IFrame.childR (f : IFrame) (v : ℕ) (M : ℤ) (s : ℕ) (upper : Bool) : IFrame :=
+  cond (Nat.beq s 1 && decide (M = f.X.getD v 0) && Nat.beq ((f.H.getD v 0).natAbs % 2) 0)
+    (f.half v upper) (f.child v M s upper).reduce
+
 /-- The frame as a rational `Frame` (no reparametrization). -/
 def IFrame.toFrame (f : IFrame) : Frame :=
   ⟨f.seg, f.kind, (List.range f.X.length).map fun i => ((f.X.getD i 0 : ℚ) / f.D),
@@ -147,7 +167,8 @@ inductive KTree where
   | hole (f : IFrame)
 
 section
-variable (H : Handoffs) (facts : Array Row) (fps : Array FactPoly)
+variable (H : Handoffs) (facts : Array Row) (fps : Array FactPoly) (pfs : Array PFP)
+  (fbs : Array FBox) (hb : Handoff → IFrame → Bool) (Ds : Array SparsePoly.Poly)
 
 /-- The cheap bound for fact polynomial `fp` on the integer box. -/
 def cheapI7 (fp : FactPoly) (f : IFrame) : Bool :=
@@ -156,40 +177,66 @@ def cheapI7 (fp : FactPoly) (f : IFrame) : Bool :=
   cheapP fp.S f.D (f.X.map Int.natAbs) (f.X.map fun x => decide (x < 0)) Hn true ||
     cheapP fp.S f.D (Y.map Int.natAbs) (Y.map fun x => decide (x < 0)) (Hn.map (2 * ·)) false
 
-/-- A fact anchored with its `hi₁ > 0` flag. -/
+/-- A fact anchored with its `hi₁ > 0` flag and its packed polynomial. -/
+abbrev ActE := ℕ × Bool × PFP
+
+/-- The flag and packed polynomial of active fact `k`. -/
+def lookupA (k : ℕ) (act : List ActE) : Option (Bool × PFP) :=
+  @List.rec ActE (fun _ => Option (Bool × PFP)) none
+    (fun e _ ih => cond (Nat.beq e.1 k) (some e.2) ih) act
+
 def anchorOk (f : IFrame) (k : ℕ) : Bool :=
-  match facts[k]? with
-  | some r => decide (r.aff = [] ∧ r.seg = f.seg ∧ r.kind = f.kind) && f.inBox r
-  | none => false
+  match facts[k]?, fbs[k]? with
+  | some r, some fb => decide (r.aff = [] ∧ r.seg = f.seg ∧ r.kind = f.kind) &&
+      inBoxI fb f.D f.X f.H && (pfs[k]?).isSome
+  | _, _ => false
 
 def anchorFlag (k : ℕ) : Bool :=
   match facts[k]? with
   | some r => decide (0 < r.hi 1)
   | none => true
 
-def leafPOk (f : IFrame) (active : List (ℕ × Bool)) (k : ℕ) : Bool :=
-  match active.lookup k, fps[k]? with
-  | some flag, some fp =>
-      (!flag || decide (0 < f.hi1)) &&
-      (List.range fp.m.length).all (fun i =>
-        decide (fp.m.getD i 0 = 0) || decide (f.H.getD i 0 ≤ f.X.getD i 0)) &&
-      cheapI7 fp f
+/-- A kernel shared leaf: the packed cheap bound, else the term-by-term one. -/
+def leafPOk (f : IFrame) (active : List ActE) (k : ℕ) : Bool :=
+  match lookupA k active with
+  | some (flag, pf) =>
+      (!flag || decide (0 < f.hi1)) && monoOkR pf.mono f.X f.H &&
+        (cheapS pf f.D f.X f.H ||
+          match fps[k]? with
+          | some fp => cheapI7 fp f
+          | none => false)
+  | none => false
+
+/-- A shared leaf with its fact's displacement polynomial `D` (as `Ds[k]`) given. -/
+def sharedDOk (k : ℕ) (row : Row) (F : Frame) : Bool :=
+  match facts[k]?, Ds[k]? with
+  | some fact, some D =>
+      decide (row.seg = F.seg ∧ row.kind = F.kind ∧ row.center = F.center ∧
+        row.radius = F.radius ∧ row.aff = F.aff) &&
+      decide (row.seg = fact.seg ∧ row.kind = fact.kind ∧ row.triple = fact.triple ∧
+        row.aff = [] ∧ fact.aff = [] ∧ row.SubBox fact ∧ (0 < fact.hi 1 → 0 < row.hi 1) ∧
+        ∀ x ∈ row.radius, 0 ≤ x) &&
+      row.dispB1 D
   | _, _ => false
 
-def KTree.check : IFrame → List (ℕ × Bool) → KTree → Bool
+def KTree.check : IFrame → List ActE → KTree → Bool
   | f, act, .split v M s lo hi =>
       Nat.blt v f.X.length && Nat.blt 0 s &&
         decide ((s : ℤ) * (f.X.getD v 0 - f.H.getD v 0) ≤ M ∧
           M ≤ (s : ℤ) * (f.X.getD v 0 + f.H.getD v 0)) &&
-        KTree.check (f.child v M s false).reduce act lo &&
-        KTree.check (f.child v M s true).reduce act hi
+        KTree.check (f.childR v M s false) act lo &&
+        KTree.check (f.childR v M s true) act hi
   | f, act, .anchor ks t =>
-      ks.all (anchorOk facts f) && KTree.check f (ks.map (fun k => (k, anchorFlag facts k)) ++ act) t
+      ks.all (anchorOk facts pfs fbs f) &&
+        KTree.check f (ks.map (fun k => (k, anchorFlag facts k, (pfs[k]?).getD default)) ++ act) t
   | f, act, .leafP k => leafPOk fps f act k
   | f, _, .flipP k =>
       match flipFP f.seg f.kind k with
       | some fp => cheapI7 (scaleSub fp (f.D ^ 10)) f
       | none => false
+  | f, _, .leaf (.handoff h) => hb h f || decide (H.Valid h f.toFrame)
+  | f, _, .leaf (.shared row k) =>
+      sharedDOk facts Ds k row f.toFrame || decide ((Leaf.shared row k).Valid H facts fps f.toFrame)
   | f, _, .leaf l => decide (l.Valid H facts fps f.toFrame)
   | f, _, .hole g => decide (g = f)
 
@@ -505,6 +552,134 @@ theorem IFrame.reduce_hi1 : 0 < f.reduce.hi1 ↔ 0 < f.hi1 := by
 
 end reduce
 
+/-! ## Soundness: the bisection fast path -/
+
+theorem setR_eq (x : ℤ) : ∀ (l : List ℤ) (j : ℕ), setR x l j = l.set j x
+  | [], _ => rfl
+  | y :: l, 0 => rfl
+  | y :: l, j + 1 => by
+      show y :: setR x l j = _
+      rw [setR_eq x l j]; rfl
+
+theorem getD_setR (x : ℤ) (l : List ℤ) (j i : ℕ) :
+    (setR x l j).getD i 0 = if i = j ∧ j < l.length then x else l.getD i 0 := by
+  rw [setR_eq]
+  simp only [List.getD_eq_getElem?_getD, List.getElem?_set]
+  by_cases hij : j = i
+  · subst hij
+    by_cases hl : j < l.length
+    · simp [hl]
+    · simp [hl]
+  · simp [hij, Ne.symm hij]
+
+theorem length_setR (x : ℤ) (l : List ℤ) (j : ℕ) : (setR x l j).length = l.length := by
+  rw [setR_eq, List.length_set]
+
+/-- Frames `g` and `h` with `g = 2 h` entrywise describe the same box. -/
+structure IFrame.Twice (g h : IFrame) : Prop where
+  seg : g.seg = h.seg
+  kind : g.kind = h.kind
+  D : g.D = 2 * h.D
+  X : ∀ i, g.X.getD i 0 = 2 * h.X.getD i 0
+  H : ∀ i, g.H.getD i 0 = 2 * h.H.getD i 0
+
+theorem IFrame.Twice.mem {g h : IFrame} (t : g.Twice h) (y : ℕ → ℝ) : g.Mem y ↔ h.Mem y := by
+  unfold IFrame.Mem
+  simp only [t.D, t.X, t.H]
+  push_cast
+  have : ∀ a b : ℝ, (2 * a) / (2 * b) = a / b := fun a b => by
+    rcases eq_or_ne b 0 with hb | hb
+    · simp [hb]
+    · field_simp
+  simp only [this]
+
+theorem IFrame.Twice.hi1 {g h : IFrame} (t : g.Twice h) : 0 < g.hi1 ↔ 0 < h.hi1 := by
+  unfold IFrame.hi1
+  rw [t.X, t.H]
+  omega
+
+theorem IFrame.Twice.good {g h : IFrame} (t : g.Twice h) (hg : g.Good) (hX : h.X.length ≤ 7)
+    (hH : h.H.length ≤ h.X.length) : h.Good := by
+  refine ⟨by have := hg.D; rw [t.D] at this; omega, hX, hH, fun i => ?_⟩
+  have := hg.Hnn i
+  rw [t.H] at this
+  omega
+
+section fast
+variable (f : IFrame) (v : ℕ) (M : ℤ) (s : ℕ)
+
+theorem IFrame.half_twice (hg : f.Good) (hv : v < f.X.length) (hs : s = 1)
+    (hM : M = f.X.getD v 0) (hev : (f.H.getD v 0).natAbs % 2 = 0) (upper : Bool) :
+    (f.child v M s upper).Twice (f.half v upper) := by
+  subst hs hM
+  have he : f.H.getD v 0 = 2 * (f.H.getD v 0 / 2) := by omega
+  have hed : ∀ x : ℤ, Int.ediv x 2 = x / 2 := fun _ => rfl
+  refine ⟨rfl, rfl, by simp [IFrame.child_D, IFrame.half], fun i => ?_, fun i => ?_⟩
+  · rw [IFrame.child_X]
+    simp only [IFrame.half, getD_setR]
+    by_cases hi : i < f.X.length
+    · by_cases hiv : i = v
+      · subst hiv
+        simp only [ite_true, hi, and_self, IFrame.childA, IFrame.childB]
+        cases upper <;> simp only [Bool.false_eq_true, ite_false, ite_true, Bool.cond_false,
+          Bool.cond_true, int_add_eq', int_sub_eq', hed] <;> omega
+      · simp only [hi, ite_true, hiv, ite_false, false_and]
+        push_cast; ring
+    · simp only [hi, ite_false]
+      rw [getD_of_length_le _ le_rfl i hi]
+      split_ifs <;> omega
+  · rw [IFrame.child_H]
+    simp only [IFrame.half, getD_setR]
+    by_cases hi : i < f.X.length
+    · by_cases hiv : i = v
+      · subst hiv
+        simp only [ite_true, hi, IFrame.childA, IFrame.childB]
+        by_cases hl : i < f.H.length
+        · simp only [hl, and_self, ite_true, hed]
+          cases upper <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega
+        · simp only [hl, and_false, ite_false]
+          rw [getD_of_length_le f.H le_rfl i hl] at he ⊢
+          cases upper <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega
+      · simp only [hi, ite_true, hiv, ite_false, false_and]
+        push_cast; ring
+    · simp only [hi, ite_false]
+      rw [getD_of_length_le f.H hg.H i hi]
+      split_ifs <;> omega
+
+theorem IFrame.half_X_length (upper : Bool) : (f.half v upper).X.length = f.X.length := by
+  simp [IFrame.half, length_setR]
+
+theorem IFrame.half_H_length (upper : Bool) : (f.half v upper).H.length = f.H.length := by
+  simp [IFrame.half, length_setR]
+
+variable (hv : v < f.X.length) (hs : 0 < s)
+  (hlo : (s : ℤ) * (f.X.getD v 0 - f.H.getD v 0) ≤ M)
+  (hhi : M ≤ (s : ℤ) * (f.X.getD v 0 + f.H.getD v 0))
+include hv hs hlo hhi
+
+/-- What the split proof needs of `childR`: a good frame describing the child's box. -/
+theorem IFrame.childR_spec (hg : f.Good) (upper : Bool) :
+    (f.childR v M s upper).Good ∧ (f.childR v M s upper).seg = f.seg ∧
+      (f.childR v M s upper).kind = f.kind ∧
+      (∀ y, (f.childR v M s upper).Mem y ↔ (f.child v M s upper).Mem y) ∧
+      (0 < (f.childR v M s upper).hi1 ↔ 0 < (f.child v M s upper).hi1) := by
+  have cg := f.child_good v M s hs hlo hhi hg upper
+  unfold IFrame.childR
+  by_cases hc : (Nat.beq s 1 && decide (M = f.X.getD v 0) &&
+      Nat.beq ((f.H.getD v 0).natAbs % 2) 0) = true
+  · rw [hc]
+    simp only [Bool.and_eq_true, Nat.beq_eq, decide_eq_true_eq] at hc
+    obtain ⟨⟨h1, h2⟩, h3⟩ := hc
+    have t := f.half_twice v M s hg hv h1 h2 h3 upper
+    refine ⟨t.good cg (by rw [IFrame.half_X_length]; exact hg.X)
+      (by rw [IFrame.half_H_length, IFrame.half_X_length]; exact hg.H), rfl, rfl,
+      fun y => (t.mem y).symm, t.hi1.symm⟩
+  · rw [Bool.eq_false_iff.mpr hc]
+    exact ⟨IFrame.reduce_good _ cg, IFrame.reduce_seg _, IFrame.reduce_kind _,
+      IFrame.reduce_mem _ cg, IFrame.reduce_hi1 _ cg⟩
+
+end fast
+
 /-! ## Soundness: anchors, rational frames, leaves -/
 
 theorem IFrame.getD_Xq (f : IFrame) (i : ℕ) :
@@ -593,31 +768,139 @@ theorem cheapI7_sound (fp : FactPoly) (f : IFrame) (hg : f.Good) (h : cheapI7 fp
     rw [sub_div, zero_div, mul_div_assoc]
     constructor <;> linarith [hm.1, hm.2]
 
+theorem cheapS_sound (W : ℕ) (fp : FactPoly) (f : IFrame) (hg : f.Good)
+    (h : cheapS (mkPFP W fp) f.D f.X f.H = true) (y : ℕ → ℝ) (hy : f.Mem y) :
+    0 ≤ eval y (toIPoly fp.S).toPoly := by
+  have hHn : ∀ i, natI (f.H.map Int.toNat) i = f.H.getD i 0 := by
+    intro i
+    have := hg.Hnn i
+    simp only [natI, List.getD_eq_getElem?_getD, List.getElem?_map] at this ⊢
+    cases hh : f.H[i]? with
+    | none => simp
+    | some x => simp only [hh, Option.getD_some, Option.map_some] at this ⊢; omega
+  refine cheapI_sound _ _ _ _ _ (cheapS_imp W fp f.D f.X f.H hg.X hg.H h) y fun i => ?_
+  rw [xI_map]
+  have hm := (abs_sub_le_iff' _ _ _).mp (hy i)
+  simp only [loI, ite_true, hHn]
+  push_cast
+  rw [neg_div]
+  constructor <;> linarith [hm.1, hm.2]
+
 /-! ## Soundness: the tree -/
 
-theorem mem_of_lookup {act : List (ℕ × Bool)} {k : ℕ} {b : Bool}
-    (h : act.lookup k = some b) : (k, b) ∈ act := by
+theorem mem_of_lookupA {act : List ActE} {k : ℕ} {b : Bool} {pf : PFP}
+    (h : lookupA k act = some (b, pf)) : (k, b, pf) ∈ act := by
   induction act with
-  | nil => simp at h
-  | cons p act ih =>
-      obtain ⟨k', b'⟩ := p
-      simp only [List.lookup_cons] at h
-      by_cases hk : k = k'
+  | nil => simp [lookupA] at h
+  | cons e act ih =>
+      obtain ⟨k', b', pf'⟩ := e
+      by_cases hk : k' = k
       · subst hk
-        simp only [beq_self_eq_true, Option.some.injEq] at h
-        subst h
+        have : lookupA k' ((k', b', pf') :: act) = some (b', pf') := by
+          simp [lookupA]
+        rw [this] at h
+        cases h
         exact List.mem_cons_self
-      · have : (k == k') = false := by simpa using hk
+      · have : lookupA k ((k', b', pf') :: act) = lookupA k act := by
+          simp only [lookupA]
+          rw [show Nat.beq k' k = false from Bool.eq_false_iff.mpr fun h' => hk (Nat.eq_of_beq_eq_true h')]
+          rfl
         rw [this] at h
         exact List.mem_cons_of_mem _ (ih h)
 
-section
-variable (H : Handoffs) (facts : Array Row) (fps : Array FactPoly)
+/-- The packed polynomials are those of the facts' polynomials. -/
+def PFPsOk (W : ℕ) (fps : Array FactPoly) (pfs : Array PFP) : Prop :=
+  pfs.toList = fps.toList.map (mkPFP W)
 
-/-- Each active fact is valid for the frame and contains it. -/
-def ActiveInv (f : IFrame) (act : List (ℕ × Bool)) : Prop :=
-  ∀ k b, (k, b) ∈ act → ∃ r, facts[k]? = some r ∧ r.aff = [] ∧ r.seg = f.seg ∧
-    r.kind = f.kind ∧ (∀ y, f.Mem y → r.box.Mem y) ∧ (b = false → ¬ 0 < r.hi 1)
+instance (W : ℕ) (fps : Array FactPoly) (pfs : Array PFP) : Decidable (PFPsOk W fps pfs) := by
+  unfold PFPsOk; infer_instance
+
+theorem PFPsOk.getElem? {W : ℕ} {fps : Array FactPoly} {pfs : Array PFP}
+    (h : PFPsOk W fps pfs) (k : ℕ) : pfs[k]? = (fps[k]?).map (mkPFP W) := by
+  rw [← Array.getElem?_toList, h, List.getElem?_map, Array.getElem?_toList]
+
+/-- The integer fact boxes are those of the facts. -/
+def FBoxesOk (facts : Array Row) (fbs : Array FBox) : Prop :=
+  fbs.toList = facts.toList.map mkFBox
+
+instance (facts : Array Row) (fbs : Array FBox) : Decidable (FBoxesOk facts fbs) := by
+  unfold FBoxesOk; infer_instance
+
+theorem FBoxesOk.getElem? {facts : Array Row} {fbs : Array FBox} (h : FBoxesOk facts fbs)
+    (k : ℕ) : fbs[k]? = (facts[k]?).map mkFBox := by
+  rw [← Array.getElem?_toList, h, List.getElem?_map, Array.getElem?_toList]
+
+/-- `Ds` lists the facts' displacement polynomials. -/
+def DsOk (facts : Array Row) (Ds : Array SparsePoly.Poly) : Prop :=
+  Ds.toList = facts.toList.map Row.D
+
+theorem DsOk.getElem? {facts : Array Row} {Ds : Array SparsePoly.Poly} (h : DsOk facts Ds)
+    (k : ℕ) : Ds[k]? = (facts[k]?).map Row.D := by
+  rw [← Array.getElem?_toList, h, List.getElem?_map, Array.getElem?_toList]
+
+theorem DsOk.of_getElem? {facts : Array Row} {fps : Array FactPoly} {Ds : Array SparsePoly.Poly}
+    (hsz : Ds.size = facts.size) (hfs : facts.size = fps.size)
+    (h : ∀ k : Fin fps.size, Ds[k.val]? = (facts[k.val]?).map Row.D) : DsOk facts Ds := by
+  unfold DsOk
+  apply List.ext_getElem?
+  intro i
+  rw [List.getElem?_map, Array.getElem?_toList, Array.getElem?_toList]
+  by_cases hi : i < fps.size
+  · exact h ⟨i, hi⟩
+  · rw [Array.getElem?_eq_none (by omega), Array.getElem?_eq_none (by omega)]
+    rfl
+
+theorem sharedDOk_sound (H : Handoffs) (facts : Array Row) (fps : Array FactPoly)
+    (Ds : Array SparsePoly.Poly) (hD : DsOk facts Ds) (k : ℕ) (row : Row) (F : Frame)
+    (h : sharedDOk facts Ds k row F = true) : (Leaf.shared row k).Valid H facts fps F := by
+  unfold sharedDOk at h
+  rw [hD.getElem? k] at h
+  cases hk : facts[k]? with
+  | none => simp [hk] at h
+  | some fact =>
+      simp only [hk, Option.map_some, Bool.and_eq_true, decide_eq_true_eq] at h
+      obtain ⟨⟨⟨hseg, hkind, hc, hr, haff⟩, ⟨hs, hki, htr, ha, hfa, hsub, hlam, hrad⟩⟩, hdisp⟩ := h
+      have eD : fact.D = row.D := by
+        simp only [Row.D, hs, hki, htr, ha, hfa]
+      rw [eD] at hdisp
+      refine ⟨hseg, hkind, hc, hr, haff, ?_⟩
+      unfold SharedFactOk
+      rw [hk]
+      exact ⟨hs, hki, htr, ha, hfa, hsub, hlam, hrad, (Row.dispB_iff row).mp hdisp⟩
+
+theorem IFrame.inBoxI_sound (f : IFrame) (r : Row) (hg : f.Good)
+    (h : inBoxI (mkFBox r) f.D f.X f.H = true) (y : ℕ → ℝ) (hy : f.Mem y) : r.box.Mem y := by
+  obtain ⟨hc, hr, h⟩ := CornerKernel.inBoxI_sound r f.D hg.D f.X f.H h
+  intro i
+  by_cases h7 : i < 7
+  · have hi := h i h7
+    have hiR : |((f.X.getD i 0 : ℚ) / f.D : ℝ) - (r.box.center i : ℝ)| +
+        ((f.H.getD i 0 : ℚ) / f.D : ℝ) ≤ (r.box.radius i : ℝ) := by
+      have := (Rat.cast_le (K := ℝ)).mpr hi
+      push_cast at this ⊢
+      exact this
+    push_cast at hiR
+    have hyi := hy i
+    calc |y i - r.box.center i|
+        ≤ |y i - (f.X.getD i 0 : ℝ) / f.D| + |(f.X.getD i 0 : ℝ) / f.D - r.box.center i| :=
+          abs_sub_le _ _ _
+      _ ≤ _ := by linarith
+  · have hyi := hy i
+    rw [getD_of_length_le _ hg.X i h7, getD_of_length_le _ (hg.H.trans hg.X) i h7] at hyi
+    have e := box_beyond r hc hr i h7
+    rw [e.1, e.2]
+    simpa using hyi
+
+section
+variable (H : Handoffs) (facts : Array Row) (fps : Array FactPoly) (pfs : Array PFP)
+  (fbs : Array FBox) (hb : Handoff → IFrame → Bool) (Ds : Array SparsePoly.Poly) (W : ℕ)
+
+/-- Each active fact is valid for the frame and contains it; its packed polynomial is that
+of its fact polynomial. -/
+def ActiveInv (f : IFrame) (act : List ActE) : Prop :=
+  ∀ k b pf, (k, b, pf) ∈ act → ∃ r fp, facts[k]? = some r ∧ fps[k]? = some fp ∧
+    pf = mkPFP W fp ∧ r.aff = [] ∧ r.seg = f.seg ∧ r.kind = f.kind ∧
+    (∀ y, f.Mem y → r.box.Mem y) ∧ (b = false → ¬ 0 < r.hi 1)
 
 theorem fps_ok (hfps : FactPolysOk facts fps) {k : ℕ} {r : Row} {fp : FactPoly}
     (hr : facts[k]? = some r) (hp : fps[k]? = some fp) : fp.Ok r := by
@@ -630,101 +913,115 @@ theorem fps_ok (hfps : FactPolysOk facts fps) {k : ℕ} {r : Row} {fp : FactPoly
   rwa [← Option.some.inj hp]
 
 theorem check_sound (hH : ∀ h f, H.Valid h f → Covered f)
-    (hfacts : ∀ fact ∈ facts, fact.KeyFacts) (hfps : FactPolysOk facts fps) :
-    ∀ (t : KTree) (f : IFrame) (act : List (ℕ × Bool)), f.Good → ActiveInv facts f act →
-      KTree.check H facts fps f act t = true → (∀ g ∈ t.holes, ICovered g) → ICovered f
+    (hfacts : ∀ fact ∈ facts, fact.KeyFacts) (hfps : FactPolysOk facts fps)
+    (hpf : PFPsOk W fps pfs) (hfb : FBoxesOk facts fbs)
+    (hhb : ∀ h f, f.Good → hb h f = true → H.Valid h f.toFrame) (hDs : DsOk facts Ds) :
+    ∀ (t : KTree) (f : IFrame) (act : List ActE), f.Good → ActiveInv facts fps W f act →
+      KTree.check H facts fps pfs fbs hb Ds f act t = true → (∀ g ∈ t.holes, ICovered g) →
+        ICovered f
   | .split v M s lo hi, f, act, hg, hinv, h, hholes => by
       simp only [KTree.check, Bool.and_eq_true, Nat.blt_eq, decide_eq_true_eq] at h
       obtain ⟨⟨⟨⟨hv, hs⟩, hlo, hhi⟩, hL⟩, hU⟩ := h
-      have cg := fun upper => f.child_good v M s hs hlo hhi hg upper
-      have childInv : ∀ upper, ActiveInv facts (f.child v M s upper).reduce act := by
-        intro upper k b hkb
-        obtain ⟨r, hr, haff, hseg, hkind, hbox, hflag⟩ := hinv k b hkb
-        refine ⟨r, hr, haff, by rw [IFrame.reduce_seg]; exact hseg,
-          by rw [IFrame.reduce_kind]; exact hkind, fun y hy => hbox y ?_, hflag⟩
-        exact f.mem_of_child v M s hv hs hlo hhi hg upper ((IFrame.reduce_mem _ (cg upper) y).mp hy)
-      have covL := check_sound hH hfacts hfps lo _ act (IFrame.reduce_good _ (cg false))
+      have sp := fun upper => f.childR_spec v M s hv hs hlo hhi hg upper
+      have childInv : ∀ upper, ActiveInv facts fps W (f.childR v M s upper) act := by
+        intro upper k b pf hkb
+        obtain ⟨r, fp, hr, hp, hpfe, haff, hseg, hkind, hbox, hflag⟩ := hinv k b pf hkb
+        refine ⟨r, fp, hr, hp, hpfe, haff, by rw [(sp upper).2.1]; exact hseg,
+          by rw [(sp upper).2.2.1]; exact hkind, fun y hy => hbox y ?_, hflag⟩
+        exact f.mem_of_child v M s hv hs hlo hhi hg upper (((sp upper).2.2.2.1 y).mp hy)
+      have covL := check_sound hH hfacts hfps hpf hfb hhb hDs lo _ act (sp false).1
         (childInv false) hL (fun g hg' => hholes g (by simp [KTree.holes, hg']))
-      have covU := check_sound hH hfacts hfps hi _ act (IFrame.reduce_good _ (cg true))
+      have covU := check_sound hH hfacts hfps hpf hfb hhb hDs hi _ act (sp true).1
         (childInv true) hU (fun g hg' => hholes g (by simp [KTree.holes, hg']))
       intro p offset y hc hmem hε hρ hlam hflip hscale
       rcases f.mem_child v M s hv hs hlo hhi hg hmem with hm | hm
-      · refine covL p offset y (by rw [IFrame.reduce_seg, IFrame.reduce_kind]; exact hc)
-          ((IFrame.reduce_mem _ (cg false) y).mpr hm) hε
-          (by rw [IFrame.reduce_kind]; exact hρ)
+      · refine covL p offset y (by rw [(sp false).2.1, (sp false).2.2.1]; exact hc)
+          (((sp false).2.2.2.1 y).mpr hm) hε
+          (by rw [(sp false).2.2.1]; exact hρ)
           (fun h => hlam (f.child_hi1 v M s hv hs hlo hhi false
-            ((IFrame.reduce_hi1 _ (cg false)).mp h))) hflip hscale
-      · refine covU p offset y (by rw [IFrame.reduce_seg, IFrame.reduce_kind]; exact hc)
-          ((IFrame.reduce_mem _ (cg true) y).mpr hm) hε
-          (by rw [IFrame.reduce_kind]; exact hρ)
+            ((sp false).2.2.2.2.mp h))) hflip hscale
+      · refine covU p offset y (by rw [(sp true).2.1, (sp true).2.2.1]; exact hc)
+          (((sp true).2.2.2.1 y).mpr hm) hε
+          (by rw [(sp true).2.2.1]; exact hρ)
           (fun h => hlam (f.child_hi1 v M s hv hs hlo hhi true
-            ((IFrame.reduce_hi1 _ (cg true)).mp h))) hflip hscale
+            ((sp true).2.2.2.2.mp h))) hflip hscale
   | .anchor ks t, f, act, hg, hinv, h, hholes => by
       simp only [KTree.check, Bool.and_eq_true, List.all_eq_true] at h
       obtain ⟨hks, ht⟩ := h
-      refine check_sound hH hfacts hfps t f _ hg ?_ ht (fun g hg' => hholes g hg')
-      intro k b hkb
+      refine check_sound hH hfacts hfps hpf hfb hhb hDs t f _ hg ?_ ht (fun g hg' => hholes g hg')
+      intro k b pf hkb
       rcases List.mem_append.mp hkb with hkb | hkb
       · obtain ⟨k', hk', he⟩ := List.mem_map.mp hkb
         simp only [Prod.mk.injEq] at he
-        obtain ⟨rfl, rfl⟩ := he
+        obtain ⟨rfl, rfl, rfl⟩ := he
         have hok := hks k' hk'
         unfold anchorOk at hok
         unfold anchorFlag
         cases hr : facts[k']? with
         | none => simp [hr] at hok
         | some r =>
-            simp only [hr, Bool.and_eq_true, decide_eq_true_eq] at hok
-            obtain ⟨⟨haff, hseg, hkind⟩, hbox⟩ := hok
-            refine ⟨r, rfl, haff, hseg, hkind, f.inBox_sound r hg hbox, ?_⟩
-            intro hb
-            simpa using hb
-      · exact hinv k b hkb
+            rw [hfb.getElem? k', hr] at hok
+            simp only [Option.map_some, Bool.and_eq_true, decide_eq_true_eq] at hok
+            obtain ⟨⟨⟨haff, hseg, hkind⟩, hbox⟩, hsome⟩ := hok
+            rw [hpf.getElem? k'] at hsome ⊢
+            cases hp : fps[k']? with
+            | none => simp [hp] at hsome
+            | some fp =>
+                refine ⟨r, fp, rfl, rfl, by simp, haff, hseg, hkind,
+                  f.inBoxI_sound r hg hbox, ?_⟩
+                intro hb
+                simpa using hb
+      · exact hinv k b pf hkb
   | .leafP k, f, act, hg, hinv, h, _ => by
       simp only [KTree.check] at h
       unfold leafPOk at h
-      cases hl : act.lookup k with
+      cases hl : lookupA k act with
       | none => simp [hl] at h
-      | some flag =>
-          cases hp : fps[k]? with
-          | none => simp [hl, hp] at h
-          | some fp =>
-              simp only [hl, hp, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true',
-                decide_eq_true_eq, List.all_eq_true, List.mem_range] at h
-              obtain ⟨⟨hflag1, hm⟩, hcheap⟩ := h
-              obtain ⟨r, hr, haff, hseg, hkind, hbox, hflag⟩ := hinv k flag (mem_of_lookup hl)
-              have hfp := fps_ok facts fps hfps hr hp
-              have hrk := hfacts r (Array.mem_of_getElem? hr)
-              have hD : (0 : ℝ) < f.D := by exact_mod_cast hg.D
-              intro p offset y hc hmem hε hρ hlam hflip hscale
-              refine r.not_rupert_fact hrk haff p offset y (hseg ▸ hkind ▸ hc) (hbox y hmem) hε
-                (fun ht => hρ (by simpa [Row.isTube, hkind] using ht)) ?_ hscale ?_
-              · intro hpos
-                cases flag
-                · exact absurd hpos (hflag rfl)
-                · rcases hflag1 with h1 | h1
-                  · simp at h1
-                  · exact hlam h1
-              · rw [hfp.eval_D]
-                have hK : (0 : ℝ) < fp.K := by exact_mod_cast hfp.1
-                have hmono : 0 ≤ monoEval y fp.m := by
-                  apply monoEval_nonneg_of
-                  intro i hi
-                  have hlen : i < fp.m.length := by
-                    by_contra hc'
-                    simp [List.getD_eq_getElem?_getD,
-                      List.getElem?_eq_none (by omega : fp.m.length ≤ i)] at hi
-                  rcases hm i hlen with h0 | h0
-                  · omega
-                  · have hyi := (abs_sub_le_iff' _ _ _).mp (hmem i)
-                    have : (0 : ℝ) ≤ (f.X.getD i 0 : ℝ) / f.D - (f.H.getD i 0 : ℝ) / f.D := by
-                      rw [← sub_div]
-                      apply div_nonneg _ hD.le
-                      have : (f.H.getD i 0 : ℝ) ≤ f.X.getD i 0 := by exact_mod_cast h0
-                      linarith
-                    linarith [hyi.1]
-                have hS := cheapI7_sound fp f hg hcheap y hmem
-                exact mul_nonneg hε.le (div_nonneg (mul_nonneg hmono hS) hK.le)
+      | some e =>
+          obtain ⟨flag, pf⟩ := e
+          obtain ⟨r, fp, hr, hp, hpfe, haff, hseg, hkind, hbox, hflag⟩ :=
+            hinv k flag pf (mem_of_lookupA hl)
+          simp only [hl, hp, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true',
+            decide_eq_true_eq] at h
+          obtain ⟨⟨hflag1, hmono⟩, hcheap⟩ := h
+          have hm := monoOkR_sound pf.mono f.X f.H hmono
+          rw [hpfe] at hm hcheap
+          change ∀ i < fp.m.length, fp.m.getD i 0 = 0 ∨ f.H.getD i 0 ≤ f.X.getD i 0 at hm
+          have hfp := fps_ok facts fps hfps hr hp
+          have hrk := hfacts r (Array.mem_of_getElem? hr)
+          have hD : (0 : ℝ) < f.D := by exact_mod_cast hg.D
+          intro p offset y hc hmem hε hρ hlam hflip hscale
+          refine r.not_rupert_fact hrk haff p offset y (hseg ▸ hkind ▸ hc) (hbox y hmem) hε
+            (fun ht => hρ (by simpa [Row.isTube, hkind] using ht)) ?_ hscale ?_
+          · intro hpos
+            cases flag
+            · exact absurd hpos (hflag rfl)
+            · rcases hflag1 with h1 | h1
+              · simp at h1
+              · exact hlam h1
+          · rw [hfp.eval_D]
+            have hK : (0 : ℝ) < fp.K := by exact_mod_cast hfp.1
+            have hmono : 0 ≤ monoEval y fp.m := by
+              apply monoEval_nonneg_of
+              intro i hi
+              have hlen : i < fp.m.length := by
+                by_contra hc'
+                simp [List.getD_eq_getElem?_getD,
+                  List.getElem?_eq_none (by omega : fp.m.length ≤ i)] at hi
+              rcases hm i hlen with h0 | h0
+              · omega
+              · have hyi := (abs_sub_le_iff' _ _ _).mp (hmem i)
+                have : (0 : ℝ) ≤ (f.X.getD i 0 : ℝ) / f.D - (f.H.getD i 0 : ℝ) / f.D := by
+                  rw [← sub_div]
+                  apply div_nonneg _ hD.le
+                  have : (f.H.getD i 0 : ℝ) ≤ f.X.getD i 0 := by exact_mod_cast h0
+                  linarith
+                linarith [hyi.1]
+            have hS : 0 ≤ eval y (toIPoly fp.S).toPoly := by
+              rcases hcheap with h1 | h1
+              · exact cheapS_sound W fp f hg h1 y hmem
+              · exact cheapI7_sound fp f hg h1 y hmem
+            exact mul_nonneg hε.le (div_nonneg (mul_nonneg hmono hS) hK.le)
   | .flipP k, f, act, hg, _, h, _ => by
       simp only [KTree.check] at h
       cases hfp : flipFP f.seg f.kind k with
@@ -748,8 +1045,16 @@ theorem check_sound (hH : ∀ h f, H.Valid h f → Covered f)
             exact div_pos (mul_pos (monoEval_pos_of_len y hε fp.m hok.2.1) hSpos) hK
           exact absurd hflip (not_flipReduced_of_flipPoly_pos hc k hscale hpos)
   | .leaf l, f, act, hg, _, h, _ => by
-      simp only [KTree.check, decide_eq_true_eq] at h
-      have cov := leaf_covered H hH facts hfacts fps hfps f.toFrame l h
+      have hv : l.Valid H facts fps f.toFrame := by
+        cases l with
+        | handoff hh =>
+            simp only [KTree.check, Bool.or_eq_true, decide_eq_true_eq] at h
+            exact h.elim (hhb hh f hg) id
+        | shared row k =>
+            simp only [KTree.check, Bool.or_eq_true, decide_eq_true_eq] at h
+            exact h.elim (sharedDOk_sound H facts fps Ds hDs k row _) id
+        | _ => simpa only [KTree.check, decide_eq_true_eq] using h
+      have cov := leaf_covered H hH facts hfacts fps hfps f.toFrame l hv
       intro p offset y hc hmem hε hρ hlam hflip hscale
       exact cov p offset y (by simpa [IFrame.toFrame, affY_nil] using hc)
         ((f.toFrame_mem hg y).mpr hmem) hε hρ (fun h => hlam ((f.toFrame_hi1 hg).mp h))
@@ -766,8 +1071,9 @@ end
 theorem holes_of_eq {t : KTree} {l : List IFrame} (h : t.holes = l)
     (hl : ∀ g ∈ l, ICovered g) : ∀ g ∈ t.holes, ICovered g := h ▸ hl
 
-theorem activeInv_nil (facts : Array Row) (f : IFrame) : ActiveInv facts f [] :=
-  fun _ _ h => absurd h List.not_mem_nil
+theorem activeInv_nil (facts : Array Row) (fps : Array FactPoly) (W : ℕ) (f : IFrame) :
+    ActiveInv facts fps W f [] :=
+  fun _ _ _ h => absurd h List.not_mem_nil
 
 /-- A table root given as an integer frame. -/
 theorem covered_of_toFrame (g : IFrame) (hg : g.WF = true) (f : Frame) (h : g.toFrame = f)

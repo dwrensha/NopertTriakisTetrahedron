@@ -53,8 +53,8 @@ partial def readKTree (f : IFrame) : Decoder KTree := do
     let v ← readNat
     let M ← readInt
     let s ← readNat
-    let lo ← readKTree (f.child v M s false).reduce
-    let hi ← readKTree (f.child v M s true).reduce
+    let lo ← readKTree (f.childR v M s false)
+    let hi ← readKTree (f.childR v M s true)
     pure (.split v M s lo hi)
   else if tag = 1 then
     let n ← readNat

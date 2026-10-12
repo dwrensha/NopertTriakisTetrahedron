@@ -2,6 +2,7 @@ import Noperts.Stellated.PackedSolutionTree
 import Noperts.Stellated.PackedLocalViewTree
 import Noperts.Stellated.PackedCTree
 import Noperts.Stellated.ChartKernelMixed
+import Noperts.Stellated.ChartKernelInt
 import Std.Data.HashMap
 
 /-!
@@ -265,10 +266,11 @@ def main (args : List String) : IO Unit := do
       s!"theorem m{k}.c{c.id}.ok (hhdr : HeadersCovered headers) (hcorner : CornerCovered)
     (hh : ∀ x ∈ m{k}.c{c.id}.holeList, NoRupert 0 (framePath x).1 (framePath x).2) :
     NoRupert 0 (framePath m{k}.c{c.id}.steps).1 (framePath m{k}.c{c.id}.steps).2 :=
-  chunk_sound headers hhdr hcorner _ m{k}.c{c.id}.tree (by decide +kernel)
+  chunkI_sound headers hhdr hcorner _ m{k}.c{c.id}.tree (by decide +kernel)
     (holes_of m{k}.c{c.id}.holes_eq hh)
 "
     IO.FS.writeFile s!"{out}/M{k}.lean" s!"import Noperts.Stellated.KernelLoadChart
+import Noperts.Stellated.ChartKernelInt
 import StellatedKernel.Chart.Headers
 
 open Noperts.Stellated Noperts.Stellated.ChartKernelTree

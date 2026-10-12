@@ -227,11 +227,22 @@ def NonnegOk (allowed : ℕ → Bool) (box : Box) (q : Poly) : Prop :=
 def PosOk (allowed : ℕ → Bool) (box : Box) (q : Poly) : Prop :=
   PosOk0 allowed box q ∨ PosOk0 allowed box (pinPoly box.pin q)
 
-instance (allowed : ℕ → Bool) (box : Box) (q : Poly) :
-    Decidable (NonnegOk0 allowed box q) := by unfold NonnegOk0; infer_instance
+/-! `boxLower` is the largest of three bounds, each a full substitution; the decisions below
+try them one at a time and stop at the first that suffices. -/
 
 instance (allowed : ℕ → Bool) (box : Box) (q : Poly) :
-    Decidable (PosOk0 allowed box q) := by unfold PosOk0; infer_instance
+    Decidable (NonnegOk0 allowed box q) :=
+  decidable_of_iff (strippedOk allowed q = true ∧
+      (0 ≤ centeredLower box (stripped allowed q) ∨ 0 ≤ cornerLower box (stripped allowed q) ∨
+        0 ≤ cornerLowerHi box (stripped allowed q)))
+    (by simp only [NonnegOk0, boxLower, le_max_iff])
+
+instance (allowed : ℕ → Bool) (box : Box) (q : Poly) :
+    Decidable (PosOk0 allowed box q) :=
+  decidable_of_iff (strippedOk allowed q = true ∧
+      (0 < centeredLower box (stripped allowed q) ∨ 0 < cornerLower box (stripped allowed q) ∨
+        0 < cornerLowerHi box (stripped allowed q)))
+    (by simp only [PosOk0, boxLower, lt_max_iff])
 
 instance (allowed : ℕ → Bool) (box : Box) (q : Poly) :
     Decidable (NonnegOk allowed box q) := by unfold NonnegOk; infer_instance

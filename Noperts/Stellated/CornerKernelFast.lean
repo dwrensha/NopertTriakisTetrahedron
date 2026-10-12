@@ -668,6 +668,47 @@ theorem max_loI (H : List ℕ) (centered : Bool) (i : ℕ) :
   have h0 : (0 : ℤ) ≤ natI H i := by simp [natI]
   cases centered <;> simp [loI, abs_of_nonneg h0, h0]
 
+/-- The cheap bound from its sums: the value parts, the slot sums of the gradient and the
+majorant at `ax + H` (as `cheapP` and the packed checker compute them). -/
+theorem cheapI_of_slots (S : List (Mono × ℕ × Bool)) (D : ℕ) (ax : List ℕ) (sgB : List Bool)
+    (H : List ℕ) (centered : Bool) (hD : 0 < D) (hS : ∀ t ∈ S, t.1.length ≤ 7)
+    (hax : ax.length ≤ 7) (hH : H.length ≤ 7)
+    (hfin : (S.map fun t => if tneg sgB t then tc D (maxDegN S) t * monoNat ax t.1 else 0).sum +
+        ∑ j ∈ Finset.range 7, linT centered (pSlot D (maxDegN S) ax sgB H S true j)
+          (pSlot D (maxDegN S) ax sgB H S false j) +
+        (S.map fun t => tc D (maxDegN S) t * monoNat (addL7 ax H) t.1).sum ≤
+      (S.map fun t => if tneg sgB t then 0 else tc D (maxDegN S) t * monoNat ax t.1).sum +
+        (S.map fun t => tc D (maxDegN S) t * monoNat ax t.1).sum +
+        ∑ j ∈ Finset.range 7, (pSlot D (maxDegN S) ax sgB H S true j +
+          pSlot D (maxDegN S) ax sgB H S false j)) :
+    cheapI (toIPoly S) D (xI ax sgB) (loI H centered) (natI H) = true := by
+  set N := maxDegN S with hNdef
+  have hup := getD_addL7 ax H hax hH
+  simp only [cheapI, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, maxDeg_toIPoly]
+  refine ⟨⟨hD, fun t ht => ?_⟩, ?_⟩
+  · obtain ⟨u, hu, rfl⟩ := List.mem_map.mp ht
+    exact hS u hu
+  simp only [cheapCore, decide_eq_true_eq, abs_xI, max_loI, sum7_eq]
+  have hupF : (fun i => |xI ax sgB i| + natI H i) = natI (addL7 ax H) := by
+    funext i
+    have := congrFun (abs_xI ax sgB) i
+    rw [this]
+    simp only [natI, hup]
+    push_cast
+    rfl
+  rw [hupF, valSum_eq, absSum_eq, absSum_eq]
+  rw [Finset.sum_congr rfl fun i _ => by
+      rw [show loI H centered i = (if centered then -(1 : ℤ) else 0) * natI H i by
+          cases centered <;> simp [loI],
+        show ∀ g : ℤ, g * ((if centered then -(1 : ℤ) else 0) * natI H i) =
+          (if centered then -(1 : ℤ) else 0) * (g * natI H i) from fun g => by ring,
+        gradSum_eq, min_linT]]
+  rw [Finset.sum_congr rfl fun i _ => absGradSum_eq D N ax sgB H i S]
+  have hZ := (Nat.cast_le (α := ℤ)).mpr hfin
+  push_cast at hZ ⊢
+  simp only [Finset.sum_neg_distrib]
+  linarith
+
 theorem cheapP_imp (S : List (Mono × ℕ × Bool)) (D : ℕ) (ax : List ℕ) (sgB : List Bool)
     (H : List ℕ) (centered : Bool) (h : cheapP S D ax sgB H centered = true) :
     cheapI (toIPoly S) D (xI ax sgB) (loI H centered) (natI H) = true := by
@@ -704,30 +745,6 @@ theorem cheapP_imp (S : List (Mono × ℕ × Bool)) (D : ℕ) (ax : List ℕ) (s
     Finset.sum_congr rfl fun j hj => by
       rw [hslot true j (Finset.mem_range.mp hj), hslot false j (Finset.mem_range.mp hj)]
   rw [e1, e2] at hfin
-  -- the integer form
-  simp only [cheapI, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, maxDeg_toIPoly]
-  refine ⟨⟨hD, fun t ht => ?_⟩, ?_⟩
-  · obtain ⟨u, hu, rfl⟩ := List.mem_map.mp ht
-    exact hS u hu
-  simp only [cheapCore, decide_eq_true_eq, abs_xI, max_loI, sum7_eq]
-  have hupF : (fun i => |xI ax sgB i| + natI H i) = natI (addL7 ax H) := by
-    funext i
-    have := congrFun (abs_xI ax sgB) i
-    rw [this]
-    simp only [natI, hup]
-    push_cast
-    rfl
-  rw [hupF, valSum_eq, absSum_eq, absSum_eq]
-  rw [Finset.sum_congr rfl fun i _ => by
-      rw [show loI H centered i = (if centered then -(1 : ℤ) else 0) * natI H i by
-          cases centered <;> simp [loI],
-        show ∀ g : ℤ, g * ((if centered then -(1 : ℤ) else 0) * natI H i) =
-          (if centered then -(1 : ℤ) else 0) * (g * natI H i) from fun g => by ring,
-        gradSum_eq, min_linT]]
-  rw [Finset.sum_congr rfl fun i _ => absGradSum_eq D N ax sgB H i S]
-  have hZ := (Nat.cast_le (α := ℤ)).mpr hfin
-  push_cast at hZ ⊢
-  simp only [Finset.sum_neg_distrib]
-  linarith
+  exact cheapI_of_slots S D ax sgB H centered hD hS hax hH hfin
 
 end Noperts.Stellated.CornerKernel

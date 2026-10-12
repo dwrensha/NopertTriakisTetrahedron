@@ -288,8 +288,33 @@ def factPolyE (fp : CornerKernel.FactPoly) : Expr :=
   mkApp3 (Lean.mkConst ``CornerKernel.FactPoly.mk) (listE tTy (fp.S.map termE)) (monoE fp.m)
     (natE fp.K)
 
+def vgE (g : CornerKernel.VG) : Expr :=
+  mkApp3 (Lean.mkConst ``CornerKernel.VG.mk) (natE g.e) (natE g.mask) (natE g.maskT)
+
+def vgListE (gs : List CornerKernel.VG) : Expr := listE (Lean.mkConst ``CornerKernel.VG) (gs.map vgE)
+
+def pfpE (p : CornerKernel.PFP) : Expr :=
+  mkAppN (Lean.mkConst ``CornerKernel.PFP.mk) #[natE p.W, natE p.N, natE p.csum, boolE p.sok,
+    natE p.C, natE p.CT,
+    listE (mkApp (Lean.mkConst ``List [Level.zero]) (Lean.mkConst ``CornerKernel.VG))
+      (p.vars.map vgListE),
+    vgListE p.dg, natE p.CS, listE (Lean.mkConst ``Nat) (p.odd.map natE), natE p.vmask,
+    natE p.wmask, natE p.bmod, monoE p.mono]
+
+def polyE (p : SparsePoly.Poly) : Expr :=
+  let monoTy := mkApp (Lean.mkConst ``List [Level.zero]) (Lean.mkConst ``Nat)
+  let tTy := mkApp2 (Lean.mkConst ``Prod [Level.zero, Level.zero]) monoTy ratTy
+  listE tTy (p.map fun t =>
+    mkApp4 (Lean.mkConst ``Prod.mk [Level.zero, Level.zero]) monoTy ratTy (monoE t.1) (ratE t.2))
+
+def fboxE (b : CornerKernel.FBox) : Expr :=
+  mkAppN (Lean.mkConst ``CornerKernel.FBox.mk) #[natE b.L, listE (Lean.mkConst ``Int) (b.C.map intE),
+    listE (Lean.mkConst ``Int) (b.R.map intE), boolE b.ok]
+
 /-- `stellated_corner_chunk "corner-v2.pack" table lo hi name` defines
-`name : List Node` (nodes `[lo, hi)` of that table) and `name.facts : List Row`. -/
+`name : List Node` (nodes `[lo, hi)` of that table), `name.facts : List Row`,
+`name.fpolys : List FactPoly` and their packed forms `name.pfpolys : List PFP`
+(`mkPFP packedW`, computed natively; `PFPsOk` checks them in the kernel). -/
 syntax (name := cornerChunkCmd)
   "stellated_corner_chunk " str num num num ident : command
 
@@ -328,6 +353,29 @@ syntax (name := cornerChunkCmd)
       type := mkApp (Lean.mkConst ``List [Level.zero]) fpTy,
       value := listE fpTy (t.fpolys.toList.map factPolyE), hints := .abbrev, safety := .safe }
     modifyEnv (addNoncomputable · (ns ++ `fpolys))
+    let pfTy := Lean.mkConst ``CornerKernel.PFP
+    withExporting <| addDecl <| .defnDecl {
+      name := ns ++ `pfpolys, levelParams := [],
+      type := mkApp (Lean.mkConst ``List [Level.zero]) pfTy,
+      value := listE pfTy (t.fpolys.toList.map fun fp => pfpE (CornerKernel.mkPFP CornerKernel.packedW fp)),
+      hints := .abbrev, safety := .safe }
+    modifyEnv (addNoncomputable · (ns ++ `pfpolys))
+    let fbTy := Lean.mkConst ``CornerKernel.FBox
+    withExporting <| addDecl <| .defnDecl {
+      name := ns ++ `fboxes, levelParams := [],
+      type := mkApp (Lean.mkConst ``List [Level.zero]) fbTy,
+      value := listE fbTy (t.facts.toList.map fun r => fboxE (CornerKernel.mkFBox r)),
+      hints := .abbrev, safety := .safe }
+    modifyEnv (addNoncomputable · (ns ++ `fboxes))
+    let polyTy := mkApp (Lean.mkConst ``List [Level.zero])
+      (mkApp2 (Lean.mkConst ``Prod [Level.zero, Level.zero])
+        (mkApp (Lean.mkConst ``List [Level.zero]) (Lean.mkConst ``Nat)) ratTy)
+    withExporting <| addDecl <| .defnDecl {
+      name := ns ++ `dpolys, levelParams := [],
+      type := mkApp (Lean.mkConst ``List [Level.zero]) polyTy,
+      value := listE polyTy (t.facts.toList.map fun r => polyE r.D),
+      hints := .abbrev, safety := .safe }
+    modifyEnv (addNoncomputable · (ns ++ `dpolys))
 
 def intListE (l : List ℤ) : Expr := listE (Lean.mkConst ``Int) (l.map intE)
 

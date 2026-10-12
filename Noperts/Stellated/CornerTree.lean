@@ -462,6 +462,16 @@ instance (facts : Array Row) (fps : Array CornerKernel.FactPoly) (k : Fin fps.si
   unfold FactPolyAt
   split <;> infer_instance
 
+/-- `FactPolyAt` together with the fact's displacement polynomial `Ds[k]` (one decision
+computes `D` once for both). -/
+def FactPolyDAt (facts : Array Row) (fps : Array CornerKernel.FactPoly) (Ds : Array Poly)
+    (k : Fin fps.size) : Prop :=
+  FactPolyAt facts fps k ∧ Ds[k.val]? = (facts[k.val]?).map Row.D
+
+instance (facts : Array Row) (fps : Array CornerKernel.FactPoly) (Ds : Array Poly)
+    (k : Fin fps.size) : Decidable (FactPolyDAt facts fps Ds k) := by
+  unfold FactPolyDAt; infer_instance
+
 /-- Each fact's polynomial data is correct. -/
 def FactPolysOk (facts : Array Row) (fps : Array CornerKernel.FactPoly) : Prop :=
   ∀ k : Fin fps.size, FactPolyAt facts fps k

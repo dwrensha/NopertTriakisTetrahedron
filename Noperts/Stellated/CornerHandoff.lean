@@ -172,6 +172,99 @@ def cpocketIneqs (aff : List (List ℚ)) : List Poly :=
     add (scale (tpocketW / 2) (add B C)) A,
     add (scale (tpocketW / 2) (add B C)) (scale (-1) A)].map normalize
 
+/-! ### The cone-pocket conditions as affine bounds
+
+The polynomials of `cpocketIneqs` are affine in the box variables `2, …, 5`; `cpocketLin`
+bounds them directly from the rows of the reparametrization (no polynomial arithmetic). -/
+
+/-- The row `[a₀, a₁, …, a₄]` stands for `a₀ + a₁ y₂ + … + a₄ y₅`; `affLo` is its minimum on
+the frame's box. -/
+def affLo (f : Frame) (r : List ℚ) : ℚ :=
+  r.getD 0 0 + ((List.range 4).map fun j =>
+    r.getD (j + 1) 0 * f.center.getD (j + 2) 0 - |r.getD (j + 1) 0| * f.radius.getD (j + 2) 0).sum
+
+noncomputable def affV (r : List ℚ) (y : ℕ → ℝ) : ℝ :=
+  r.getD 0 0 + ((List.range 4).map fun j => (r.getD (j + 1) 0 : ℝ) * y (j + 2)).sum
+
+def rowC (a : ℚ) (r : List ℚ) : List ℚ := (List.range 5).map fun j => a * r.getD j 0
+
+def rowAdd (r s : List ℚ) : List ℚ := (List.range 5).map fun j => r.getD j 0 + s.getD j 0
+
+def rowK (a : ℚ) : List ℚ := [a, 0, 0, 0, 0]
+
+/-- The cone-pocket inequalities, from the rows `U, A, B, C` of the reparametrization. -/
+def cpocketLin (f : Frame) : Bool :=
+  let U := f.aff.getD 0 []
+  let A := f.aff.getD 1 []
+  let B := f.aff.getD 2 []
+  let C := f.aff.getD 3 []
+  let BC := rowC (tpocketW / 2) (rowAdd B C)
+  !f.aff.isEmpty &&
+    decide (0 ≤ affLo f (rowAdd U (rowK (-coneTie)))) &&
+    decide (0 ≤ affLo f (rowAdd (rowK (coneTie + tpocketDU)) (rowC (-1) U))) &&
+    decide (0 ≤ affLo f B) && decide (0 ≤ affLo f C) &&
+    decide (0 ≤ affLo f (rowAdd (rowK rho0) (rowC (-1) B))) &&
+    decide (0 ≤ affLo f (rowAdd (rowK rho0) (rowC (-1) C))) &&
+    decide (0 ≤ affLo f (rowAdd BC A)) && decide (0 ≤ affLo f (rowAdd BC (rowC (-1) A)))
+
+theorem affV_rowAdd (r s : List ℚ) (y : ℕ → ℝ) : affV (rowAdd r s) y = affV r y + affV s y := by
+  simp [affV, rowAdd, List.range_succ, List.getD_eq_getElem?_getD]
+  ring
+
+theorem affV_rowC (a : ℚ) (r : List ℚ) (y : ℕ → ℝ) : affV (rowC a r) y = a * affV r y := by
+  simp [affV, rowC, List.range_succ, List.getD_eq_getElem?_getD]
+  ring
+
+theorem affV_rowK (a : ℚ) (y : ℕ → ℝ) : affV (rowK a) y = a := by
+  simp [affV, rowK, List.range_succ]
+
+theorem affLo_le (f : Frame) (r : List ℚ) {y : ℕ → ℝ} (hmem : f.box.Mem y) :
+    (affLo f r : ℝ) ≤ affV r y := by
+  have key : ∀ j, ((r.getD (j + 1) 0 * f.center.getD (j + 2) 0 -
+      |r.getD (j + 1) 0| * f.radius.getD (j + 2) 0 : ℚ) : ℝ) ≤ (r.getD (j + 1) 0 : ℝ) * y (j + 2) := by
+    intro j
+    have hm := hmem (j + 2)
+    simp only [Frame.box, Frame.toRow, Row.box] at hm
+    set a : ℝ := (r.getD (j + 1) 0 : ℝ)
+    have h1 : |a * (y (j + 2) - f.center.getD (j + 2) 0)| ≤ |a| * f.radius.getD (j + 2) 0 := by
+      rw [abs_mul]; exact mul_le_mul_of_nonneg_left hm (abs_nonneg _)
+    have h2 := neg_abs_le (a * (y (j + 2) - f.center.getD (j + 2) 0))
+    push_cast
+    nlinarith
+  have := key 0; have := key 1; have := key 2; have := key 3
+  simp only [affLo, affV, List.range_succ, List.range_zero, List.map_cons, List.map_nil,
+    List.sum_cons, List.sum_nil, List.nil_append, List.map_append, List.sum_append] at *
+  push_cast at *
+  linarith
+
+theorem affY_eq_affV (aff : List (List ℚ)) (h : aff ≠ []) (y : ℕ → ℝ) (k : ℕ) (hk2 : 2 ≤ k)
+    (hk5 : k ≤ 5) : affY aff y k = affV (aff.getD (k - 2) []) y := by
+  simp only [affY, affPoly, hk2, hk5, ne_eq, h, not_false_eq_true, and_self, ite_true, eval_add,
+    eval_const, eval_scale, eval_var, affV, List.range_succ, List.range_zero, List.map_cons,
+    List.map_nil, List.sum_cons, List.sum_nil, List.nil_append, List.map_append, List.sum_append]
+  push_cast
+  ring
+
+theorem cpocketLin_sound (f : Frame) (h : cpocketLin f = true) {y : ℕ → ℝ} (hmem : f.box.Mem y) :
+    (0 : ℝ) ≤ affY f.aff y 2 - coneTie ∧ (0 : ℝ) ≤ coneTie + tpocketDU - affY f.aff y 2 ∧
+      0 ≤ affY f.aff y 4 ∧ 0 ≤ affY f.aff y 5 ∧ (0 : ℝ) ≤ rho0 - affY f.aff y 4 ∧
+      (0 : ℝ) ≤ rho0 - affY f.aff y 5 ∧
+      (0 : ℝ) ≤ tpocketW / 2 * (affY f.aff y 4 + affY f.aff y 5) + affY f.aff y 3 ∧
+      (0 : ℝ) ≤ tpocketW / 2 * (affY f.aff y 4 + affY f.aff y 5) - affY f.aff y 3 := by
+  simp only [cpocketLin, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff,
+    decide_eq_true_eq] at h
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨hne, h0⟩, h1⟩, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩, h7⟩ := h
+  have g : ∀ r : List ℚ, 0 ≤ affLo f r → (0 : ℝ) ≤ affV r y := fun r hr =>
+    le_trans (by exact_mod_cast hr) (affLo_le f r hmem)
+  rw [affY_eq_affV _ hne y 2 le_rfl (by norm_num), affY_eq_affV _ hne y 3 (by norm_num)
+    (by norm_num), affY_eq_affV _ hne y 4 (by norm_num) (by norm_num),
+    affY_eq_affV _ hne y 5 (by norm_num) (by norm_num)]
+  have e0 := g _ h0; have e1 := g _ h1; have e2 := g _ h2; have e3 := g _ h3
+  have e4 := g _ h4; have e5 := g _ h5; have e6 := g _ h6; have e7 := g _ h7
+  simp only [affV_rowAdd, affV_rowC, affV_rowK] at e0 e1 e2 e3 e4 e5 e6 e7
+  push_cast at *
+  refine ⟨by linarith, by linarith, e2, e3, by linarith, by linarith, by linarith, by linarith⟩
+
 /-- The skew pocket roots (the scale `a ~ ε` in the skew chart): `0` askew,
 `1` bskew (`+`), `2` bskew (`-`); the skew root's `u, b, η'` ranges. -/
 def spocketKind : Fin 3 → ChartKind
@@ -391,7 +484,7 @@ def HandoffValid (e0 : ℚ) : Handoff → Frame → Prop
   | .cpocket, f => f.kind = .plain ∧ f.seg = false ∧ f.center.length = 6 ∧
       f.radius.length = 6 ∧ f.lo 1 = 1 ∧ f.hi 1 = 1 ∧ 0 ≤ f.lo 0 ∧ f.hi 0 ≤ e0 ∧
       (∀ x ∈ f.radius, 0 ≤ x) ∧
-      ∀ q ∈ cpocketIneqs f.aff, NonnegOk f.toRow.nonnegVars f.box q
+      (cpocketLin f = true ∨ ∀ q ∈ cpocketIneqs f.aff, NonnegOk f.toRow.nonnegVars f.box q)
   | .cone, f => f.seg = false ∧ f.aff = [] ∧ f.lo 1 = 1 ∧ f.hi 1 = 1 ∧
       0 ≤ f.lo 0 ∧ f.hi 0 ≤ e0 ∧ coneTie - coneDU ≤ f.lo 2 ∧ f.hi 2 ≤ coneTie + coneDU ∧
       ((f.kind = .plain ∧ ∀ v ∈ [3, 4, 5], -coneR ≤ f.lo v ∧ f.hi v ≤ coneR) ∨
@@ -1289,26 +1382,34 @@ theorem cpocket_sound (e0 : ℚ) (f : Frame) (hT : ∀ face m, Covered (tpocketR
   have hε' : 0 < z 0 := by rw [z0]; exact hε
   have hz0 : z 0 ≤ e0 := by rw [z0]; exact hy0
   have hz1 : z 1 = 1 := by rw [z1]; exact hy1
-  have hvars := fun v hv => f.toRow.nonnegVars_sound hmem v hv
-  have hradf := f.toRow.radius_nonneg hrad
-  have g : ∀ P, normalize P ∈ cpocketIneqs f.aff → 0 ≤ eval y P := fun P hP => by
-    have := NonnegOk.sound (hineq _ hP) hmem hradf hvars
-    rwa [eval_normalize] at this
-  have ez : ∀ k, eval y (affPoly f.aff k) = z k := fun k => rfl
   obtain ⟨hx, hy, hzz⟩ := hc.plain_xyz
-  have i0 := g (add (affPoly f.aff 2) (const (-coneTie))) (by simp [cpocketIneqs])
-  have i1 := g (add (const (coneTie + tpocketDU)) (scale (-1) (affPoly f.aff 2)))
-    (by simp [cpocketIneqs])
-  have i2 := g (affPoly f.aff 4) (by simp [cpocketIneqs])
-  have i3 := g (affPoly f.aff 5) (by simp [cpocketIneqs])
-  have i4 := g (add (const rho0) (scale (-1) (affPoly f.aff 4))) (by simp [cpocketIneqs])
-  have i5 := g (add (const rho0) (scale (-1) (affPoly f.aff 5))) (by simp [cpocketIneqs])
-  have i6 := g (add (scale (tpocketW / 2) (add (affPoly f.aff 4) (affPoly f.aff 5)))
-    (affPoly f.aff 3)) (by simp [cpocketIneqs])
-  have i7 := g (add (scale (tpocketW / 2) (add (affPoly f.aff 4) (affPoly f.aff 5)))
-    (scale (-1) (affPoly f.aff 3))) (by simp [cpocketIneqs])
-  simp only [eval_add, eval_const, eval_scale, ez] at i0 i1 i2 i3 i4 i5 i6 i7
-  push_cast at i0 i1 i2 i3 i4 i5 i6 i7
+  have I : (0 : ℝ) ≤ z 2 - coneTie ∧ (0 : ℝ) ≤ coneTie + tpocketDU - z 2 ∧
+      0 ≤ z 4 ∧ 0 ≤ z 5 ∧ (0 : ℝ) ≤ rho0 - z 4 ∧ (0 : ℝ) ≤ rho0 - z 5 ∧
+      (0 : ℝ) ≤ tpocketW / 2 * (z 4 + z 5) + z 3 ∧
+      (0 : ℝ) ≤ tpocketW / 2 * (z 4 + z 5) - z 3 := by
+    rcases hineq with hl | hineq
+    · exact cpocketLin_sound f hl hmem
+    have hvars := fun v hv => f.toRow.nonnegVars_sound hmem v hv
+    have hradf := f.toRow.radius_nonneg hrad
+    have g : ∀ P, normalize P ∈ cpocketIneqs f.aff → 0 ≤ eval y P := fun P hP => by
+      have := NonnegOk.sound (hineq _ hP) hmem hradf hvars
+      rwa [eval_normalize] at this
+    have ez : ∀ k, eval y (affPoly f.aff k) = z k := fun k => rfl
+    have i0 := g (add (affPoly f.aff 2) (const (-coneTie))) (by simp [cpocketIneqs])
+    have i1 := g (add (const (coneTie + tpocketDU)) (scale (-1) (affPoly f.aff 2)))
+      (by simp [cpocketIneqs])
+    have i2 := g (affPoly f.aff 4) (by simp [cpocketIneqs])
+    have i3 := g (affPoly f.aff 5) (by simp [cpocketIneqs])
+    have i4 := g (add (const rho0) (scale (-1) (affPoly f.aff 4))) (by simp [cpocketIneqs])
+    have i5 := g (add (const rho0) (scale (-1) (affPoly f.aff 5))) (by simp [cpocketIneqs])
+    have i6 := g (add (scale (tpocketW / 2) (add (affPoly f.aff 4) (affPoly f.aff 5)))
+      (affPoly f.aff 3)) (by simp [cpocketIneqs])
+    have i7 := g (add (scale (tpocketW / 2) (add (affPoly f.aff 4) (affPoly f.aff 5)))
+      (scale (-1) (affPoly f.aff 3))) (by simp [cpocketIneqs])
+    simp only [eval_add, eval_const, eval_scale, ez] at i0 i1 i2 i3 i4 i5 i6 i7
+    push_cast at i0 i1 i2 i3 i4 i5 i6 i7 ⊢
+    refine ⟨by linarith, by linarith, i2, i3, by linarith, by linarith, by linarith, by linarith⟩
+  obtain ⟨i0, i1, i2, i3, i4, i5, i6, i7⟩ := I
   have hu0 : (coneTie : ℝ) ≤ z 2 := by linarith
   have hu1 : z 2 ≤ coneTie + tpocketDU := by linarith
   have hW : (0 : ℝ) < tpocketW := by norm_num [tpocketW]
