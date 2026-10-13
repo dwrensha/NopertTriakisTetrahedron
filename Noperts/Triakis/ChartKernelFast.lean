@@ -1,5 +1,6 @@
 module
 
+public import Mathlib.Data.List.GetD
 public import Noperts.Triakis.ChartKernelEdgeSound
 public import Noperts.Triakis.ChartKernelGlobalSound
 public import Noperts.Triakis.PairInt
